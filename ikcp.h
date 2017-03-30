@@ -324,6 +324,8 @@ typedef struct IKCPCB ikcpcb;
 extern "C" {
 #endif
 
+const char *ikcp_decode32u(const char *p, IUINT32 *l);
+
 //---------------------------------------------------------------------
 // interface
 //---------------------------------------------------------------------

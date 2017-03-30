@@ -1,5 +1,21 @@
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <unistd.h>
 
+#include <sys/time.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>          /* See NOTES */
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <net/if.h>
+
+#include <syslog.h>
+
+#include "ikcp.h"
 #include "xkcp_util.h"
+#include "debug.h"
 
 void itimeofday(long *sec, long *usec)
 {
@@ -52,10 +68,11 @@ char *get_iface_ip(const char *ifname)
     in.s_addr = ip;
 	
     close(sockd);
-	ip_str = safe_malloc(HTTP_IP_ADDR_LEN);
-	if(inet_ntop(AF_INET, &in, ip_str, HTTP_IP_ADDR_LEN))
+	ip_str = malloc(HTTP_IP_ADDR_LEN);
+	memset(ip_str, 0, HTTP_IP_ADDR_LEN);
+	if(ip_str&&inet_ntop(AF_INET, &in, ip_str, HTTP_IP_ADDR_LEN))
     	return ip_str;
 	
-	free(ip_str);	
+	if (ip_str) free(ip_str);	
 	return NULL;
 }

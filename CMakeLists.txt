@@ -6,7 +6,7 @@ set(src_xkcp_client
 	main.c
 	tcp_proxy.c
 	xkcp_client.c
-	xkcp_config.h
+	xkcp_config.c
 	xkcp_util.c
 	commandline.c
 	debug.c

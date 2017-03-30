@@ -33,7 +33,7 @@ struct xkcp_config {
 	int 	daemon;  
 
 	struct xkcp_param param;
-}
+};
 
 void config_init(void);
 
@@ -41,7 +41,8 @@ struct xkcp_config * xkcp_get_config(void);
 
 int xkcp_parse_param(const char *filename);
 
-int parse_json_param(struct xkcp_param *config, const char *filename);
+int xkcp_parse_json_param(struct xkcp_param *config, const char *filename);
 
 struct xkcp_param *xkcp_get_param(void);
+
 #endif

@@ -35,14 +35,12 @@
 #include "debug.h"
 #include "version.h"
 
-static void usage(void);
-
 /** @internal
  * @brief Print usage
  *
  * Prints usage, called when wifidog is run with -h or with an unknown option
  */
-static void
+void
 usage(void)
 {
     fprintf(stdout, "Usage: xkcp_client [options]\n");
@@ -63,9 +61,7 @@ void
 parse_commandline(int argc, char **argv)
 {
     int c;
-    int i;
-
-    xkcp_config *config = xkcp_get_config();
+    struct xkcp_config *config = xkcp_get_config();
 
     while (-1 != (c = getopt(argc, argv, "c:hfd:sw:vx:i:a:"))) {
 
@@ -80,7 +76,7 @@ parse_commandline(int argc, char **argv)
         case 'c':
             if (optarg) {
                 free(config->config_file);
-                config->config_file = safe_strdup(optarg);
+                config->config_file = strdup(optarg);
             }
             break;
 

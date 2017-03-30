@@ -105,7 +105,7 @@ static inline char *ikcp_encode32u(char *p, IUINT32 l)
 }
 
 /* decode 32 bits unsigned int (lsb) */
-static inline const char *ikcp_decode32u(const char *p, IUINT32 *l)
+const char *ikcp_decode32u(const char *p, IUINT32 *l)
 {
 #if IWORDS_BIG_ENDIAN
 	*l = *(const unsigned char*)(p + 3);
