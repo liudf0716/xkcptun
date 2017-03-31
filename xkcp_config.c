@@ -71,6 +71,8 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 		param->local_port = json_object_get_int(j_obj);
 	} else
 		param->local_port = 9088;
+	
+	debug(LOG_DEBUG, "local_port is %d", param->local_port);
 
 	if (json_object_object_get_ex(json_config, "remoteaddr", &j_obj)) {
 		param->remote_addr = strdup(json_object_get_string(j_obj));
@@ -83,6 +85,8 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 		param->remote_port = json_object_get_int(j_obj);
 	} else
 		param->remote_port = 9089;
+	
+	debug(LOG_DEBUG, "remote_port is %d", param->remote_port);
 
 	if (json_object_object_get_ex(json_config, "key", &j_obj)) {
 		param->key = strdup(json_object_get_string(j_obj));
@@ -163,6 +167,8 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 	if (json_object_object_get_ex(json_config, "keepalive", &j_obj)) {
 		param->keepalive = json_object_get_int(j_obj);
 	}
+	
+	debug(LOG_DEBUG, "keepalive is %d", param->keepalive);
 
 err:
 	json_object_put(json_config);

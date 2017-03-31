@@ -24,6 +24,7 @@ struct xkcp_task {
 	iqueue_head			head;
 	ikcpcb				*kcp;
 	struct bufferevent 	*b_in;
+	struct sockaddr_in	*svr_addr;
 };
 
 typedef struct xkcp_task xkcp_task_type;

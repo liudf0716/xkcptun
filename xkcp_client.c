@@ -80,8 +80,9 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	struct xkcp_task *task;
 	iqueue_head *task_list = &xkcp_task_list;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp)
+		if (task->kcp) {
 			ikcp_update(task->kcp, iclock());
+		}
 	}
 
 	set_timer_interval(timeout);
@@ -109,9 +110,7 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 	int nrecv = 0;
 
 	while ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &server_sin, &server_sz)) > 0) {
-		int conv = 0;
-		ikcp_decode32u(buf, &conv);
-		ikcpcb *kcp = get_kcp_from_conv(conv);
+		ikcpcb *kcp = get_kcp_from_conv(ikcp_getconv(buf));
 		if (kcp) {
 			ikcp_input(kcp, buf, nrecv);
 		}
@@ -171,7 +170,7 @@ int main_loop(void)
 	struct event_base *base;
 	struct evconnlistener *listener;
 	int sock = socket(AF_INET, SOCK_DGRAM, 0);
-	struct event timer_event, xkcp_event;
+	struct event timer_event;
 
 	if (sock < 0) {
 		debug(LOG_ERR, "ERROR, open udp socket");
@@ -198,12 +197,6 @@ int main_loop(void)
 	proxy_param.serveraddr.sin_port		= htons(xkcp_get_param()->remote_port);
 	memcpy((char *)&proxy_param.serveraddr.sin_addr.s_addr, (char *)server->h_addr, server->h_length);
 	listener = set_tcp_proxy_listener(base, &proxy_param);
-
-	struct xkcp_event_param event_param;
-	event_param.base 	= base;
-	event_param.args 	= listener;
-	event_assign(&xkcp_event, base, socket, EV_READ | EV_PERSIST, xkcp_rcv_cb, &event_param);
-	event_add(&xkcp_event, NULL);
 
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);
