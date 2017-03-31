@@ -76,3 +76,33 @@ char *get_iface_ip(const char *ifname)
 	if (ip_str) free(ip_str);	
 	return NULL;
 }
+
+static void
+__list_add(iqueue_head *entry, iqueue_head *prev, iqueue_head *next)
+{
+    next->prev = entry;
+    entry->next = next;
+    entry->prev = prev;
+    prev->next = entry;
+}
+
+static void
+__list_del(iqueue_head *prev, iqueue_head *next)
+{
+    next->prev = prev;
+    prev->next = next;
+}
+
+void 
+add_task_tail(struct xkcp_task *task, iqueue_head *head) { 
+	iqueue_head *entry = &task->head;	
+	
+	__list_add(entry, head->prev, head);	
+}
+
+void
+del_task(struct xkcp_task *task) {
+	iqueue_head *entry = &task->head;
+	
+	__list_del(entry->prev, entry->next);	
+}
