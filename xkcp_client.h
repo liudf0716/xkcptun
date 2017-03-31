@@ -12,8 +12,6 @@ struct xkcp_task;
 
 void xkcp_rcv_cb(const int sock, short int which, void *arg);
 
-ikcpcb *get_kcp_from_conv(int conv);
-
 void timer_event_cb(evutil_socket_t fd, short event, void *arg);
 
 int xkcp_main(int argc, char **argv);
