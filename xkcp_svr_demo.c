@@ -64,6 +64,7 @@ static void udp_cb(const int sock, short int which, void *arg)
 	} else if (len > 0) {
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp_client = get_kcp_from_conv(conv, &xkcp_task_list);
+		debug(LOG_DEBUG, "conv is %d, kcp_client is %d", conv, kcp_client?1:0);
 		if (kcp_client == NULL) {
 			struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
 			memset(param, 0, sizeof(struct xkcp_proxy_param));
@@ -90,12 +91,12 @@ int main(int argc, char **argv)
 	struct event timer_event, udp_event;
 	struct sockaddr_in sin;
 	
-	if (argc != 3) {
+	if (argc != 2) {
 		printf("%s ip port\n", argv[0]);
 		return 0;
 	}
 	
-	short port = atoi(argv[2]);
+	short port = atoi(argv[1]);
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
