@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 2.6)
 
-project(xkcp_client C)
+project(xkcptun C)
 
+set(src_xkcp_svr_demo
+	xkcp_svr_demo.c
+	ikcp.c)
+	
 set(src_xkcp_client
 	main.c
 	tcp_proxy.c
@@ -21,6 +25,9 @@ ADD_DEFINITIONS(-O2 -Wall --std=gnu99 -Wmissing-declarations)
 add_executable(xkcp_client ${src_xkcp_client})
 target_link_libraries(xkcp_client ${libs})
 
-install(TARGETS xkcp_client
+add_executable(xkcp_svr_demo, ${src_xkcp_svr_demo})
+target_link_libraries(xkcp_svr_demo ${libs})
+
+install(TARGETS xkcp_client xkcp_svr_demo
         RUNTIME DESTINATION bin
 )
