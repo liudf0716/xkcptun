@@ -19,6 +19,8 @@
 #include "xkcp_client.h"
 #include "debug.h"
 
+extern iqueue_head xkcp_task_list;
+
 static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
@@ -94,7 +96,7 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	task->kcp = kcp_client;
 	task->b_in = b_in;
 	task->svr_addr = &p->serveraddr;
-	add_task_tail(task);
+	add_task_tail(task, &xkcp_task_list);
 
 	bufferevent_setcb(b_in, tcp_proxy_read_cb, NULL, tcp_proxy_event_cb, task);
 	bufferevent_enable(b_in,  EV_READ | EV_WRITE | EV_PERSIST);
