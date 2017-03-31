@@ -96,7 +96,7 @@ int main(int argc, char **argv)
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = INADDR_ANY;
-	sin.sin_port = htons(9088);
+	sin.sin_port = htons(9089);
 	
 	if (bind(sock, (struct sockaddr *) &sin, sizeof(sin))) {
 		perror("bind()");
