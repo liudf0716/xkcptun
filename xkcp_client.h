@@ -20,8 +20,4 @@ int xkcp_main(int argc, char **argv);
 
 int main_loop(void);
 
-void add_task_tail(struct xkcp_task *task);
-
-void del_task(struct xkcp_task *task);
-
 #endif
