@@ -30,7 +30,7 @@ static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;
-	debug(LOG_DEBUG, "xkcp output [%d]", len);
+	debug(LOG_DEBUG, "xkcp output [%d] [%s]", len, buf);
 	return sendto(ptr->udp_fd, buf, len, 0, &ptr->serveraddr, sizeof(ptr->serveraddr));
 }
 
