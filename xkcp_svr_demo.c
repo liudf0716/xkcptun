@@ -98,8 +98,10 @@ int main(int argc, char **argv)
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = inet_addr(argv[1]);
+	sin.sin_addr.s_addr = htonl(INADDR_ANY);
 	sin.sin_port = htons(argv[2]);
+	
+	debug(LOG_DEBUG, "UDP SERVER PORT is %d", argv[2]);
 	
 	if (bind(sock, (struct sockaddr *) &sin, sizeof(sin))) {
 		perror("bind()");
