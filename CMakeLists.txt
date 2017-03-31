@@ -26,7 +26,7 @@ ADD_DEFINITIONS(-O2 -Wall --std=gnu99 -Wmissing-declarations)
 add_executable(xkcp_client ${src_xkcp_client})
 target_link_libraries(xkcp_client ${libs})
 
-add_executable(xkcp_svr_demo, ${src_xkcp_svr_demo})
+add_executable(xkcp_svr_demo ${src_xkcp_svr_demo})
 target_link_libraries(xkcp_svr_demo ${libs})
 
 install(TARGETS xkcp_client xkcp_svr_demo
