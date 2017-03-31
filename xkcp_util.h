@@ -13,4 +13,8 @@ IUINT32 iclock();
 
 char *get_iface_ip(const char *ifname);
 
+void add_task_tail(struct xkcp_task *task, iqueue_head *head);
+
+void del_task(struct xkcp_task *task);
+
 #endif
