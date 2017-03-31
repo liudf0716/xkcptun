@@ -41,7 +41,6 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 	iqueue_head *task_list = &xkcp_task_list;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->kcp) {
-			debug(LOG_);
 			ikcp_update(task->kcp, iclock());
 		}
 	}
