@@ -89,12 +89,17 @@ int main(int argc, char **argv)
 	int sock;
 	struct event timer_event, udp_event;
 	struct sockaddr_in sin;
-
+	
+	if (argc != 3) {
+		printf("%s ip port\n", argv[0]);
+		return 0;
+	}
+	
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = INADDR_ANY;
-	sin.sin_port = htons(9089);
+	sin.sin_addr.s_addr = inet_addr(argv[1]);
+	sin.sin_port = htons(argv[2]);
 	
 	if (bind(sock, (struct sockaddr *) &sin, sizeof(sin))) {
 		perror("bind()");
