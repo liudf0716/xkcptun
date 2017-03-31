@@ -41,6 +41,7 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 	iqueue_head *task_list = &xkcp_task_list;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->kcp) {
+			debug(LOG_);
 			ikcp_update(task->kcp, iclock());
 		}
 	}
@@ -74,8 +75,11 @@ static void udp_cb(const int sock, short int which, void *arg)
 			ikcp_wndsize(kcp_client, 128, 128);
 			ikcp_nodelay(kcp_client, 0, 10, 0, 1);
 		}
-
-		ikcp_input(kcp_client, response, sizeof(response));
+		char data[1024] = {0};
+		if (ikcp_recv(kcp_client, data, 1023) {
+			debug(LOG_DEBUG, "recv data is %s", data);
+		}
+		ikcp_send(kcp_client, response, sizeof(response));
 
 		struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 		assert(task);
