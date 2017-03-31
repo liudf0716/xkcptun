@@ -17,4 +17,6 @@ void add_task_tail(struct xkcp_task *task, iqueue_head *head);
 
 void del_task(struct xkcp_task *task);
 
+ikcpcb *get_kcp_from_conv(int conv, iqueue_head *task_list)
+
 #endif
