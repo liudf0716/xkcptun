@@ -45,7 +45,7 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 		}
 	}
 	
-	evtimer_add(ev, &TIMER_TV);
+	evtimer_add(timeout, &TIMER_TV);
 }
 
 
@@ -63,11 +63,11 @@ static void udp_cb(const int sock, short int which, void *arg)
 			event_loopbreak();
 		} else if (len > 0) {
 			int conv = ikcp_getconv(buf);
-			ikcpcb *kcp_client = get_kcp_from_conv(int conv, &xkcp_task_list);
+			ikcpcb *kcp_client = get_kcp_from_conv(conv, &xkcp_task_list);
 			if (kcp_client == NULL) {
 				struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
 				memset(param, 0, sizeof(struct xkcp_proxy_param));
-				memcpy(param->serveraddr, &server_in, server_sz);
+				memcpy(&param->serveraddr, &server_in, server_sz);
 				kcp_client = ikcp_create(conv, param);
 				kcp_client->output	= xkcp_output;
 				ikcp_wndsize(kcp_client, 128, 128);
@@ -88,8 +88,7 @@ static void udp_cb(const int sock, short int which, void *arg)
 
 int main(int argc, char **argv)
 {
-	int ret, port, sock, fd[2];
-
+	int sock;
 	struct event timer_event, udp_event;
 	struct sockaddr_in sin;
 
