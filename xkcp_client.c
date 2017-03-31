@@ -116,7 +116,7 @@ static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, vo
 	    LEV_OPT_CLOSE_ON_FREE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_REUSEABLE,
 	    -1, (struct sockaddr*)&sin, sizeof(sin));
     if (!listener) {
-    	debug(LOG_ERR, "Couldn't create listener");
+    	debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
     	exit(0);
     }
 
