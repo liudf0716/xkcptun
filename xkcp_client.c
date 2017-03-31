@@ -68,7 +68,7 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 	int nrecv = 0;
 
 	while ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &server_sin, &server_sz)) > 0) {
-		ikcpcb *kcp = get_kcp_from_conv(ikcp_getconv(buf));
+		ikcpcb *kcp = get_kcp_from_conv(ikcp_getconv(buf), &xkcp_task_list);
 		if (kcp) {
 			ikcp_input(kcp, buf, nrecv);
 		}
