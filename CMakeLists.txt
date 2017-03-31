@@ -4,6 +4,7 @@ project(xkcptun C)
 
 set(src_xkcp_svr_demo
 	xkcp_svr_demo.c
+	xkcp_util.c
 	ikcp.c)
 	
 set(src_xkcp_client
