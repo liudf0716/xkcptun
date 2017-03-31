@@ -56,17 +56,7 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	set_timer_interval(timeout);
 }
 
-ikcpcb *
-get_kcp_from_conv(int conv)
-{
-	struct xkcp_task *task;
-	iqueue_head *task_list = &xkcp_task_list;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) 
-		if (task->kcp && task->kcp->conv == conv)
-			return task->kcp;
 
-	return NULL;
-}
 
 void
 xkcp_rcv_cb(const int sock, short int which, void *arg)
