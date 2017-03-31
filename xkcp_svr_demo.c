@@ -67,7 +67,7 @@ static void udp_cb(const int sock, short int which, void *arg)
 			if (kcp_client == NULL) {
 				struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
 				memset(param, 0, sizeof(struct xkcp_proxy_param));
-				memcpy(&param->serveraddr, &server_in, server_sz);
+				memcpy(&param->serveraddr, &server_sin, server_sz);
 				kcp_client = ikcp_create(conv, param);
 				kcp_client->output	= xkcp_output;
 				ikcp_wndsize(kcp_client, 128, 128);
