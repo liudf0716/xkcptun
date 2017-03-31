@@ -95,13 +95,14 @@ int main(int argc, char **argv)
 		return 0;
 	}
 	
+	short port = atoi(argv[2]);
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = htonl(INADDR_ANY);
-	sin.sin_port = htons(argv[2]);
+	sin.sin_port = htons(port);
 	
-	debug(LOG_DEBUG, "UDP SERVER PORT is %d", argv[2]);
+	debug(LOG_DEBUG, "UDP SERVER PORT is %d", port);
 	
 	if (bind(sock, (struct sockaddr *) &sin, sizeof(sin))) {
 		perror("bind()");
