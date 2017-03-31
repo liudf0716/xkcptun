@@ -79,7 +79,7 @@ static void udp_cb(const int sock, short int which, void *arg)
 			ikcp_nodelay(kcp_client, 0, 10, 0, 1);
 		}
 		
-		ikcp_send(kcp_client, response, sizeof(response));
+		ikcp_input(kcp_client, response, sizeof(response));
 
 		struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 		assert(task);
