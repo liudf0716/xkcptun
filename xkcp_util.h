@@ -11,15 +11,16 @@ struct sockaddr_in;
 struct bufferevent;
 
 struct xkcp_proxy_param {
-	struct event_base *base;
-	int 	udp_fd;
+	struct event_base 	*base;
+	ikcpcb				*kcp;
+	int 				udp_fd;
 	struct sockaddr_in	serveraddr;
-	int addr_len;
+	int 				addr_len;
 };
 
 struct xkcp_event_param {
 	struct event_base 	*base;
-	void	*args;
+	void				*args;
 };
 
 typedef	struct xkcp_event_param	xkcp_event_param_type;
