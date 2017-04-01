@@ -127,10 +127,10 @@ int main_loop(void)
 {
 	struct event_base *base;
 	struct evconnlistener *listener;
-	int sock = socket(AF_INET, SOCK_DGRAM, 0);
-	struct event timer_event;
+	int xkcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	struct event timer_event, xkcp_event;
 
-	if (sock < 0) {
+	if (xkcp_fd < 0) {
 		debug(LOG_ERR, "ERROR, open udp socket");
 		exit(0);
 	}
@@ -150,7 +150,7 @@ int main_loop(void)
 	struct xkcp_proxy_param  proxy_param;
 	memset(&proxy_param, 0, sizeof(proxy_param));
 	proxy_param.base 		= base;
-	proxy_param.udp_fd 		= sock;
+	proxy_param.udp_fd 		= xkcp_fd;
 	proxy_param.serveraddr.sin_family 	= AF_INET;
 	proxy_param.serveraddr.sin_port		= htons(xkcp_get_param()->remote_port);
 	memcpy((char *)&proxy_param.serveraddr.sin_addr.s_addr, (char *)server->h_addr, server->h_length);
@@ -159,6 +159,9 @@ int main_loop(void)
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);
 
+	event_set(&xkcp_event, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, NULL);
+	event_add(&xkcp_event, 0);
+	
 	event_base_dispatch(base);
 
 	evconnlistener_free(listener);
