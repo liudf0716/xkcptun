@@ -51,7 +51,7 @@ tcp_proxy_read_cb(struct bufferevent *bev, void *ctx)
 	
 	while(1) {
 		char obuf[1500] = {0};
-		int nrecv = ikcp_recv(kcp, buf, 1500);
+		int nrecv = ikcp_recv(kcp, obuf, 1500);
 		if (nrecv < 0)
 			break;
 		
