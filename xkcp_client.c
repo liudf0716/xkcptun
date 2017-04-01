@@ -50,6 +50,17 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->kcp) {
 			ikcp_update(task->kcp, iclock());
+			
+			char obuf[OBUF_SIZE];
+			while(1) {
+				memset(obuf, 0, OBUF_SIZE);
+				nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
+				if (nrecv < 0)
+					break;
+		
+				debug(LOG_DEBUG, "ikcp_recv [%d]", nrecv);
+				evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
+			}
 		}
 	}
 
