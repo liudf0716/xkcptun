@@ -171,8 +171,10 @@ int main_loop(void)
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);
 
+#if	0
 	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, NULL);
 	event_add(xkcp_event, NULL);
+#endif
 	
 	event_base_dispatch(base);
 
