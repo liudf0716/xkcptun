@@ -4,6 +4,7 @@
 #include "ikcp.h"
 
 #define HTTP_IP_ADDR_LEN	16
+#define	OBUF_SIZE 1500
 
 struct eventbase;
 struct sockaddr_in;
