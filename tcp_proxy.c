@@ -48,6 +48,16 @@ tcp_proxy_read_cb(struct bufferevent *bev, void *ctx)
 		ikcp_send(kcp, data, len);
 		free(data);
 	}
+	
+	while(1) {
+		char obuf[1500] = {0};
+		int nrecv = ikcp_recv(kcp, buf, 1500);
+		if (nrecv < 0)
+			break;
+		
+		debug(LOG_DEBUG, "tcp_proxy_read_cb: ikcp_recv [%d]", nrecv);
+		evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
+	}
 }
 
 static void
