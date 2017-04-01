@@ -24,7 +24,6 @@ extern iqueue_head xkcp_task_list;
 static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
-#define	OBUF_SIZE 1500
 	struct xkcp_proxy_param *ptr = user;
 	debug(LOG_DEBUG, "xkcp output [%d]", len);
 	sendto(ptr->udp_fd, buf, len, 0, &ptr->serveraddr, sizeof(ptr->serveraddr));
@@ -36,16 +35,6 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 			break;
 		debug(LOG_DEBUG, "recv data from xkcp server and ikcp_input [%d]", nrecv);
 		ikcp_input(ptr->kcp, obuf, nrecv);
-	}
-	
-	while (1) {
-		memset(obuf, 0, OBUF_SIZE);
-		nrecv = ikcp_recv(kcp, obuf, OBUF_SIZE);
-		if (nrecv < 0)
-			break;
-		
-		debug(LOG_DEBUG, "ikcp_recv [%d]", nrecv);
-		evbuffer_add(bufferevent_get_output(ptr->b_in), obuf, nrecv);
 	}
 }
 
