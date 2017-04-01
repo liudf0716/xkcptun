@@ -56,8 +56,6 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	set_timer_interval(timeout);
 }
 
-
-
 void
 xkcp_rcv_cb(const int sock, short int which, void *arg)
 {
