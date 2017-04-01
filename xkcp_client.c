@@ -159,8 +159,7 @@ int main_loop(void)
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);
 
-	event_set(&xkcp_event, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, NULL);
-	event_add(&xkcp_event, 0);
+	event_assign(&xkcp_event, base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, NULL);
 	
 	event_base_dispatch(base);
 
