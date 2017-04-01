@@ -57,7 +57,7 @@ static void udp_cb(const int sock, short int which, void *arg)
 	char buf[BUF_RECV_LEN] = {0};
 
 	/* Recv the data, store the address of the sender in server_sin */
-	int len = recvfrom(sock, &buf, sizeof(buf) - 1, 0, (struct sockaddr *) &param->serveraddr, &param->addr-len);
+	int len = recvfrom(sock, &buf, sizeof(buf) - 1, 0, (struct sockaddr *) &param->serveraddr, &param->addr_len);
 	debug(LOG_DEBUG, "udp_cb receive [%d]", len);
 	if ( len == -1) {
 		perror("recvfrom()");
@@ -79,7 +79,7 @@ static void udp_cb(const int sock, short int which, void *arg)
 		struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 		assert(task);
 		task->kcp = kcp_client;
-		task->svr_addr = &server_sin;
+		task->svr_addr = &param->serveraddr;
 		add_task_tail(task, &xkcp_task_list);
 		
 		while(1) {
