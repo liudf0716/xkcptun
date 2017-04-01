@@ -51,24 +51,23 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 
 static void udp_cb(const int sock, short int which, void *arg)
 {
-	struct sockaddr_in server_sin;
-	socklen_t server_sz = sizeof(server_sin);
+	struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
+	memset(param, 0, sizeof(struct xkcp_proxy_param));
+	param->addr_len = sizeof(struct sockaddr_in);
 	char buf[BUF_RECV_LEN] = {0};
 
 	/* Recv the data, store the address of the sender in server_sin */
-	int len = recvfrom(sock, &buf, sizeof(buf) - 1, 0, (struct sockaddr *) &server_sin, &server_sz);
+	int len = recvfrom(sock, &buf, sizeof(buf) - 1, 0, (struct sockaddr *) &param->serveraddr, &param->addr-len);
 	debug(LOG_DEBUG, "udp_cb receive [%d]", len);
 	if ( len == -1) {
 		perror("recvfrom()");
+		free(param);
 		event_loopbreak();
 	} else if (len > 0) {
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp_client = get_kcp_from_conv(conv, &xkcp_task_list);
 		debug(LOG_DEBUG, "conv is %d, kcp_client is %d", conv, kcp_client?1:0);
 		if (kcp_client == NULL) {
-			struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
-			memset(param, 0, sizeof(struct xkcp_proxy_param));
-			memcpy(&param->serveraddr, &server_sin, server_sz);
 			kcp_client = ikcp_create(conv, param);
 			kcp_client->output	= xkcp_output;
 			ikcp_wndsize(kcp_client, 128, 128);
