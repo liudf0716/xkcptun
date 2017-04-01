@@ -34,7 +34,8 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 		if (nrecv < 0)
 			break;
 		debug(LOG_DEBUG, "recv data from xkcp server and ikcp_input [%d]", nrecv);
-		ikcp_input(ptr->kcp, obuf, nrecv);
+		if (ptr->kcp)
+			ikcp_input(ptr->kcp, obuf, nrecv);
 	}
 }
 
@@ -94,6 +95,7 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 
 	static int conv = 100;
 	ikcpcb *kcp_client 	= ikcp_create(conv, param);
+	param->kcp 			= kcp_client;
 	kcp_client->output	= xkcp_output;
 	ikcp_wndsize(kcp_client, 128, 128);
 	ikcp_nodelay(kcp_client, 0, 10, 0, 1);
