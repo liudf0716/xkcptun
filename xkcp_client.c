@@ -54,7 +54,7 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 			char obuf[OBUF_SIZE];
 			while(1) {
 				memset(obuf, 0, OBUF_SIZE);
-				nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
+				int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
 				if (nrecv < 0)
 					break;
 		
