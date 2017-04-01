@@ -86,7 +86,7 @@ static void udp_cb(const int sock, short int which, void *arg)
 		while(1) {
 			char data[1024] = {0};
 			if (ikcp_recv(kcp_client, data, 1023) > 0) {
-				debug(LOG_DEBUG, "recv data is %s", data);
+				debug(LOG_DEBUG, "recv data is %s \n response is %s", data, response);
 				ikcp_send(kcp_client, response, sizeof(response));
 			} else
 				break;
