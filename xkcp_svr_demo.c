@@ -73,6 +73,7 @@ static void udp_cb(const int sock, short int which, void *arg)
 		ikcpcb *kcp_client = get_kcp_from_conv(conv, &xkcp_task_list);
 		debug(LOG_DEBUG, "conv is %d, kcp_client is %d", conv, kcp_client?1:0);
 		if (kcp_client == NULL) {
+			param->udp_fd = sock;
 			kcp_client = ikcp_create(conv, param);
 			kcp_client->output	= xkcp_output;
 			ikcp_wndsize(kcp_client, 128, 128);
