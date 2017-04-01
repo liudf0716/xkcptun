@@ -13,6 +13,7 @@ struct xkcp_proxy_param {
 	struct event_base *base;
 	int 	udp_fd;
 	struct sockaddr_in	serveraddr;
+	int addr_len;
 };
 
 struct xkcp_event_param {
