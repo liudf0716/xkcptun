@@ -66,7 +66,9 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 	socklen_t server_sz = sizeof(server_sin);
 	char buf[XKCP_RECV_BUF_LEN] = {0};
 	int nrecv = 0;
-
+	
+	debug(LOG_DEBUG, "xkcp_rcv_cb [%d]", sock);
+	
 	while ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &server_sin, &server_sz)) > 0) {
 		ikcpcb *kcp = get_kcp_from_conv(ikcp_getconv(buf), &xkcp_task_list);
 		if (kcp) {
@@ -87,6 +89,7 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 				memset(obuf, 0, XKCP_SEND_BUF_LEN);
 				nrecv = ikcp_recv(task->kcp, obuf, XKCP_SEND_BUF_LEN-1);
 				if (nrecv > 0) {
+					debug(LOG_DEBUG, "xkcp_rcv_cb: ikcp_recv [%d]", nrecv);
 					evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
 				}
 			}
