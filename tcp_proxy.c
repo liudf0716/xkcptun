@@ -46,6 +46,14 @@ tcp_proxy_read_cb(struct bufferevent *bev, void *ctx)
 		evbuffer_copyout(src, data, len);
 		debug(LOG_DEBUG, "read data from client [%d]", len);
 		ikcp_input(kcp, data, len);
+		
+		memset(data, 0, len);
+		while (1) {
+			int nret = ikcp_send(kcp, data, len);
+			if (nret < 0)
+				break;
+		}
+		
 		free(data);
 	}
 }
