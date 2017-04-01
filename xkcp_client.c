@@ -129,7 +129,7 @@ int main_loop(void)
 	struct event_base *base;
 	struct evconnlistener *listener;
 	int xkcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-	struct event timer_event, xkcp_event;
+	struct event timer_event, *xkcp_event;
 
 	if (xkcp_fd < 0) {
 		debug(LOG_ERR, "ERROR, open udp socket");
@@ -160,7 +160,8 @@ int main_loop(void)
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);
 
-	event_assign(&xkcp_event, base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, NULL);
+	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, NULL);
+	event_add(xkcp_event, NULL);
 	
 	event_base_dispatch(base);
 
