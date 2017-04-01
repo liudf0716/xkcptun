@@ -27,7 +27,8 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;
 	debug(LOG_DEBUG, "xkcp output [%d]", len);
-	sendto(ptr->udp_fd, buf, len, 0, &ptr->serveraddr, sizeof(ptr->serveraddr));
+	int nret = sendto(ptr->udp_fd, buf, len, 0, &ptr->serveraddr, sizeof(ptr->serveraddr));
+	debug(LOG_DEBUG, "sendto [%d] [%s]", nret, strerror(errno));
 	
 	char obuf[OBUF_SIZE];
 	while(1) {
