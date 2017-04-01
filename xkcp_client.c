@@ -165,7 +165,7 @@ int main_loop(void)
 	event_base_dispatch(base);
 
 	evconnlistener_free(listener);
-	close(sock);
+	close(xkcp_fd);
 	event_base_free(base);
 
 	return 0;
