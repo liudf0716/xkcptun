@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -27,13 +28,15 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	struct xkcp_proxy_param *ptr = user;
 	debug(LOG_DEBUG, "xkcp output [%d]", len);
 	sendto(ptr->udp_fd, buf, len, 0, &ptr->serveraddr, sizeof(ptr->serveraddr));
+	
 	char obuf[OBUF_SIZE];
 	while(1) {
 		memset(obuf, 0, OBUF_SIZE);
 		int nrecv = recvfrom(ptr->udp_fd, obuf, OBUF_SIZE, 0, &ptr->serveraddr, ptr->addr_len);
+		debug(LOG_DEBUG, "recv data from xkcp server and ikcp_input [%d] [%s]", nrecv, strerror(errno));
 		if (nrecv < 0)
 			break;
-		debug(LOG_DEBUG, "recv data from xkcp server and ikcp_input [%d]", nrecv);
+		
 		ikcp_input(kcp, obuf, nrecv);
 	}
 }
