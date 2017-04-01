@@ -24,9 +24,23 @@ extern iqueue_head xkcp_task_list;
 static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
+#define	OBUF_SIZE 1500
 	struct xkcp_proxy_param *ptr = user;
 	debug(LOG_DEBUG, "xkcp output [%d]", len);
-	return sendto(ptr->udp_fd, buf, len, 0, &ptr->serveraddr, sizeof(ptr->serveraddr));
+	sendto(ptr->udp_fd, buf, len, 0, &ptr->serveraddr, sizeof(ptr->serveraddr));	
+	while(1) {
+		char obuf[OBUF_SIZE] = {0};
+		int nrecv = recvfrom(ptr->udp_fd, obuf, OBUF_SIZE, 0, &ptr->serveraddr, ptr->addr_len);
+		if (nrecv < 0)
+			break;
+		ikcp_input(ptr->kcp, obuf, nrecv);
+		nrecv = ikcp_recv(kcp, obuf, 1500);
+		if (nrecv < 0)
+			break;
+		
+		debug(LOG_DEBUG, "tcp_proxy_read_cb: ikcp_recv [%d]", nrecv);
+		evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
+	}
 }
 
 static void
@@ -47,16 +61,6 @@ tcp_proxy_read_cb(struct bufferevent *bev, void *ctx)
 		debug(LOG_DEBUG, "read data from client [%d]", len);
 		ikcp_send(kcp, data, len);
 		free(data);
-	}
-	
-	while(1) {
-		char obuf[1500] = {0};
-		int nrecv = ikcp_recv(kcp, obuf, 1500);
-		if (nrecv < 0)
-			break;
-		
-		debug(LOG_DEBUG, "tcp_proxy_read_cb: ikcp_recv [%d]", nrecv);
-		evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
 	}
 }
 
