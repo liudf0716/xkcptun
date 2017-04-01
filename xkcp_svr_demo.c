@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <unistd.h>
 
+#include <netdb.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -30,7 +31,11 @@ static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;
-	debug(LOG_DEBUG, "xkcp output [%d] [%s]", len, buf);
+	struct hostent *hostp = gethostbyaddr((const char *)&ptr->serveraddr.sin_addr.s_addr,
+              sizeof(ptr->serveraddr.sin_addr.s_addr), AF_INET);
+	char *hostaddrp = inet_ntoa(clientaddr.sin_addr);
+	debug(LOG_DEBUG, "xkcp output [%d] [%d] [%s], received datagram from %s (%s)", 
+		  ptr->udp_fd, len, buf, hostp->h_name, hostaddrp);
 	return sendto(ptr->udp_fd, buf, len, 0, &ptr->serveraddr, sizeof(ptr->serveraddr));
 }
 
