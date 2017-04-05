@@ -25,13 +25,10 @@ static struct timeval TIMER_TV = {0, 10};
 
 IQUEUE_HEAD(xkcp_task_list);
 
-char response[] = {"hello world"};
-
 char *response = "HTTP/1.1 502 Bad Gateway \r\n \
 	Server: nginx/1.4.6 (Ubuntu)\r\n \
 	Date: Wed, 05 Apr 2017 10:02:04 GMT\r\n \
 	Content-Type: text/html\r\n \
-	Content-Length: 181\r\n \
 	Connection: keep-alive\r\n\r\n \
 	<html> \
 	<head><title>502 Bad Gateway</title></head> \
