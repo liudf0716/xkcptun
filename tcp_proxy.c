@@ -36,7 +36,7 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	
 	FD_ZERO(&readfds);
 	int numfd = ptr->udp_fd + 1;
-	while(0) {	
+	do {	
 		tv.tv_sec = 10;
   		tv.tv_usec = 500000;
 		FD_SET(ptr->udp_fd, &readfds);
@@ -50,18 +50,19 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 		} else {
 			if (FD_ISSET(ptr->udp_fd, &readfds)) {
 				memset(obuf, 0, OBUF_SIZE);
-				nrecv = recvfrom(ptr->udp_fd, obuf, OBUF_SIZE, 0, (struct sockaddr *)&ptr->serveraddr, &ptr->addr_len);
-				debug(LOG_DEBUG, "recv data from xkcp server and ikcp_input [%d] [%s]", nrecv, strerror(errno));
+				nrecv = recvfrom(ptr->udp_fd, obuf, OBUF_SIZE, 0, (struct sockaddr *)&ptr->serveraddr, &ptr->addr_len);	
 				if (nrecv <= 0)
 					break;
-		
+				
+				debug(LOG_DEBUG, "recv data from xkcp server and ikcp_input [%d] [%s]", nrecv, strerror(errno));
+				
 				ikcp_input(kcp, obuf, nrecv);
 			} else {
 				debug(LOG_DEBUG, "OOPS! What happened? SERVER");
 				break;
 			}
 		}
-	}
+	} while (0)
 }
 
 static void
