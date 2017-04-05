@@ -27,6 +27,20 @@ IQUEUE_HEAD(xkcp_task_list);
 
 char response[] = {"hello world"};
 
+char *response = "HTTP/1.1 502 Bad Gateway \r\n \
+	Server: nginx/1.4.6 (Ubuntu)\r\n \
+	Date: Wed, 05 Apr 2017 10:02:04 GMT\r\n \
+	Content-Type: text/html\r\n \
+	Content-Length: 181\r\n \
+	Connection: keep-alive\r\n\r\n \
+	<html> \
+	<head><title>502 Bad Gateway</title></head> \
+	<body bgcolor="white"> \
+	<center><h1>502 Bad Gateway</h1></center> \
+	<hr><center>nginx/1.4.6 (Ubuntu)</center> \
+	</body> \
+	</html> ";
+
 static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
@@ -93,7 +107,7 @@ static void udp_cb(const int sock, short int which, void *arg)
 			char data[1024] = {0};
 			if (ikcp_recv(kcp_client, data, 1023) > 0) {
 				debug(LOG_DEBUG, "recv data is %s \n response is %s", data, response);
-				ikcp_send(kcp_client, response, sizeof(response));
+				ikcp_send(kcp_client, response, strlen(response));
 			} else
 				break;
 		}
