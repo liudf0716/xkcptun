@@ -72,7 +72,6 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 {
 #define	CHECK_TIME	5
 	struct xkcp_proxy_param  *ptr = arg;
-	socklen_t server_sz = sizeof(server_sin);
 	char buf[XKCP_RECV_BUF_LEN] = {0};
 	int nrecv = 0;
 	
