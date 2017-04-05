@@ -58,7 +58,7 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 				if (nrecv < 0)
 					break;
 		
-				debug(LOG_DEBUG, "ikcp_recv [%d]", nrecv);
+				debug(LOG_DEBUG, "ikcp_recv [%d] [%s]", nrecv, obuf);
 				evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
 			}
 		}
