@@ -17,13 +17,6 @@ struct xkcp_proxy_param {
 	int 				addr_len;
 };
 
-struct xkcp_event_param {
-	struct event_base 	*base;
-	void				*args;
-};
-
-typedef	struct xkcp_event_param	xkcp_event_param_type;
-
 struct xkcp_task {
 	iqueue_head			head;
 	ikcpcb				*kcp;
