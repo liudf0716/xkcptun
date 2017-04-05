@@ -39,7 +39,7 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	while(1) {	
 		tv.tv_sec = 10;
   		tv.tv_usec = 500000;
-		FD_SET(ptr->udp_fd, readfds);
+		FD_SET(ptr->udp_fd, &readfds);
 		int nrecv = select(numfd, &readfds, NULL,/*NULL,*/ NULL, &tv);
 		
 		if (nrecv == -1) {
