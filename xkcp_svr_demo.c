@@ -26,16 +26,16 @@ static struct timeval TIMER_TV = {0, 10};
 IQUEUE_HEAD(xkcp_task_list);
 
 char *response = "HTTP/1.1 502 Bad Gateway \r\n \
-	Server: nginx/1.4.6 (Ubuntu)\r\n \
-	Date: Wed, 05 Apr 2017 10:02:04 GMT\r\n \
-	Content-Type: text/html\r\n \
-	Connection: keep-alive\r\n\r\n \
-	<html> \
-	<head><title>502 Bad Gateway</title></head> \
-	<center><h1>502 Bad Gateway</h1></center> \
-	<hr><center>nginx/1.4.6 (Ubuntu)</center> \
-	</body> \
-	</html>";
+Server: nginx/1.4.6 (Ubuntu)\r\n \
+Date: Wed, 05 Apr 2017 10:02:04 GMT\r\n \
+Content-Type: text/html\r\n \
+Connection: keep-alive\r\n\r\n \
+<html>\n \
+<head><title>502 Bad Gateway</title></head>\n \
+<center><h1>502 Bad Gateway</h1></center>\n \
+<hr><center>nginx/1.4.6 (Ubuntu)</center>\n \
+</body>\n \
+</html>\n";
 
 static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
