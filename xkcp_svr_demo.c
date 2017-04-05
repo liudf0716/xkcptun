@@ -35,11 +35,10 @@ char *response = "HTTP/1.1 502 Bad Gateway \r\n \
 	Connection: keep-alive\r\n\r\n \
 	<html> \
 	<head><title>502 Bad Gateway</title></head> \
-	<body bgcolor="white"> \
 	<center><h1>502 Bad Gateway</h1></center> \
 	<hr><center>nginx/1.4.6 (Ubuntu)</center> \
 	</body> \
-	</html> ";
+	</html>";
 
 static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
