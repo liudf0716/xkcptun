@@ -62,7 +62,7 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 				break;
 			}
 		}
-	} while (0)
+	} while (0);
 }
 
 static void
