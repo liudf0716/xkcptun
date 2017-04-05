@@ -26,8 +26,8 @@ static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;
-	debug(LOG_DEBUG, "xkcp output [%d] [%d]", len, sizeof(ptr->severaddr));
-	int nret = sendto(ptr->udp_fd, buf, len, 0, &ptr->serveraddr, sizeof(ptr->serveraddr));
+	debug(LOG_DEBUG, "xkcp output [%d] [%d]", len, sizeof(ptr->serveraddr));
+	int nret = sendto(ptr->udp_fd, buf, len, 0, (struct sockaddr *)&ptr->serveraddr, sizeof(ptr->serveraddr));
 	debug(LOG_DEBUG, "sendto [%d] [%s]", nret, strerror(errno));
 	
 	fd_set readfds;
@@ -50,7 +50,7 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 		} else {
 			if (FD_ISSET(ptr->udp_fd, &readfds)) {
 				memset(obuf, 0, OBUF_SIZE);
-				nrecv = recvfrom(ptr->udp_fd, obuf, OBUF_SIZE, 0, &ptr->serveraddr, ptr->addr_len);
+				nrecv = recvfrom(ptr->udp_fd, obuf, OBUF_SIZE, 0, (struct sockaddr *)&ptr->serveraddr, &ptr->addr_len);
 				debug(LOG_DEBUG, "recv data from xkcp server and ikcp_input [%d] [%s]", nrecv, strerror(errno));
 				if (nrecv < 0)
 					break;
