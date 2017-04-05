@@ -64,7 +64,7 @@ static void udp_cb(const int sock, short int which, void *arg)
 
 	/* Recv the data, store the address of the sender in server_sin */
 	int len = recvfrom(sock, &buf, sizeof(buf) - 1, 0, (struct sockaddr *) &param->serveraddr, &param->addr_len);
-	debug(LOG_DEBUG, "udp_cb receive [%d]", len);
+	debug(LOG_DEBUG, "udp_cb receive [%d] [%d]", len, param->addr_len);
 	if ( len == -1) {
 		perror("recvfrom()");
 		free(param);
@@ -106,12 +106,13 @@ int main(int argc, char **argv)
 	struct event timer_event, udp_event;
 	struct sockaddr_in sin;
 	
-	if (argc != 2) {
+	if (argc != 3) {
 		printf("%s ip port\n", argv[0]);
 		return 0;
 	}
 	
-	short port = atoi(argv[1]);
+	short port = atoi(argv[2]);
+	char  *host = argv[1];
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
