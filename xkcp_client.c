@@ -71,21 +71,22 @@ void
 xkcp_rcv_cb(const int sock, short int which, void *arg)
 {
 #define	CHECK_TIME	5
-	struct sockaddr_in server_sin;
+	struct xkcp_proxy_param  *ptr = arg;
 	socklen_t server_sz = sizeof(server_sin);
 	char buf[XKCP_RECV_BUF_LEN] = {0};
 	int nrecv = 0;
 	
 	debug(LOG_DEBUG, "xkcp_rcv_cb [%d]", sock);
 	
-	while ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &server_sin, &server_sz)) > 0) {
+	while ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &ptr->serveraddr, &ptr->addr_len)) > 0) {
 		ikcpcb *kcp = get_kcp_from_conv(ikcp_getconv(buf), &xkcp_task_list);
 		if (kcp) {
 			ikcp_input(kcp, buf, nrecv);
 		}
 		memset(buf, 0, XKCP_RECV_BUF_LEN);
 	}
-	
+
+#if	0
 	int i = 0;
 	for(; i < CHECK_TIME; i++) {
 		char obuf[XKCP_SEND_BUF_LEN];
@@ -107,6 +108,7 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 		if (!has_data)
 			break;
 	}
+#endif
 }
 
 static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, void *ptr)
@@ -177,8 +179,8 @@ int main_loop(void)
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);
 
-#if	0
-	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, NULL);
+#if	1
+	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, &proxy_param);
 	event_add(xkcp_event, NULL);
 #endif
 	
