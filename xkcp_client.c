@@ -4,7 +4,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
-
+#include <fcntl.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -146,7 +146,13 @@ int main_loop(void)
 		debug(LOG_ERR, "ERROR, open udp socket");
 		exit(0);
 	}
-
+	
+	if (fcntl(xkcp_fd, F_SETFL, O_NONBLOCK) == -1) {
+		debug(LOG_ERR, "ERROR, fcntl error: %s", strerror(errno));
+		exit(0);
+	}
+	
+	
 	struct hostent *server = gethostbyname(xkcp_get_param()->remote_addr);
 	if (!server) {
 		debug(LOG_ERR, "ERROR, no such host as %s", xkcp_get_param()->remote_addr);
