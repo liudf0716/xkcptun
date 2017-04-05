@@ -29,7 +29,8 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	debug(LOG_DEBUG, "xkcp output [%d] [%d]", len, sizeof(ptr->serveraddr));
 	int nret = sendto(ptr->udp_fd, buf, len, 0, (struct sockaddr *)&ptr->serveraddr, sizeof(ptr->serveraddr));
 	debug(LOG_DEBUG, "sendto [%d] [%s]", nret, strerror(errno));
-	
+
+#if	0
 	fd_set readfds;
 	struct timeval tv;
 	char obuf[OBUF_SIZE];
@@ -63,6 +64,7 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 			}
 		}
 	} while (0);
+#endif
 }
 
 static void
