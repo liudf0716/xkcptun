@@ -35,26 +35,30 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	char obuf[OBUF_SIZE];
 	
 	FD_ZERO(&readfds);
-
-	while(1) {
-		memset(obuf, 0, OBUF_SIZE);
+	int numfd = ptr->udp_fd + 1;
+	while(1) {	
 		tv.tv_sec = 10;
   		tv.tv_usec = 500000;
 		FD_SET(ptr->udp_fd, readfds);
 		int nrecv = select(numfd, &readfds, NULL,/*NULL,*/ NULL, &tv);
 		
-		if (recieve == -1) {
-		  	perror("select"); // error occurred in select()
-		} else if (recieve == 0) {
-		  printf("Timeout occurred!  No data after 10.5 seconds.\n");
+		if (nrecv == -1) {
+		  	debug(LOG_DEBUG, "select error %s", strerror(errno)); // error occurred in select()
+			break;
+		} else if (nrecv == 0) {
+		  	debug(LOG_DEBUG,"Timeout occurred!  No data after 10.5 seconds.\n");
 		} else {
 			if (FD_ISSET(ptr->udp_fd, &readfds)) {
+				memset(obuf, 0, OBUF_SIZE);
 				nrecv = recvfrom(ptr->udp_fd, obuf, OBUF_SIZE, 0, &ptr->serveraddr, ptr->addr_len);
 				debug(LOG_DEBUG, "recv data from xkcp server and ikcp_input [%d] [%s]", nrecv, strerror(errno));
 				if (nrecv < 0)
 					break;
 		
 				ikcp_input(kcp, obuf, nrecv);
+			} else {
+				debug(LOG_DEBUG, "OOPS! What happened? SERVER");
+				break;
 			}
 		}
 	}
