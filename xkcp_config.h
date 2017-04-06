@@ -31,6 +31,7 @@ struct xkcp_param {
 struct xkcp_config {
 	char 	*config_file;
 	int 	daemon;  
+	int		is_server;
 
 	struct xkcp_param param;
 };
