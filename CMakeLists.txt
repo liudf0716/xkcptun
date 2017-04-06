@@ -9,7 +9,6 @@ set(src_xkcp_svr_demo
 	ikcp.c)
 	
 set(src_xkcp_client
-	main.c
 	tcp_proxy.c
 	xkcp_client.c
 	xkcp_config.c
