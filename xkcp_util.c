@@ -131,7 +131,12 @@ int xkcp_main(int argc, char **argv)
 		usage();
 		exit(0);
 	}
-
+	
+	if (config->main_loop == NULL) {
+		debug(LOG_ERR, "should set main_loop firstly");
+		exit(0);
+	}
+	
 	if (config->daemon) {
 
         debug(LOG_INFO, "Forking into background");
