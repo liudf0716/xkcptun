@@ -111,7 +111,7 @@ static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, vo
     return listener;
 }
 
-int main_loop(void)
+int client_main_loop(void)
 {
 	struct event_base *base;
 	struct evconnlistener *listener;
@@ -165,3 +165,10 @@ int main_loop(void)
 	return 0;
 }
 
+int main(int argc, char **argv) 
+{
+	struct xkcp_config *config = xkcp_get_config();
+	config->main_loop = client_main_loop;
+	
+	return xkcp_main(argc, argv);
+}
