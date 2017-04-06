@@ -32,7 +32,7 @@ struct xkcp_config {
 	char 	*config_file;
 	int 	daemon;  
 	int		is_server;
-	void	(*main_loop)();
+	int		(*main_loop)();
 	
 	struct xkcp_param param;
 };
