@@ -165,37 +165,3 @@ int main_loop(void)
 	return 0;
 }
 
-int xkcp_main(int argc, char **argv)
-{
-	struct xkcp_config *config = xkcp_get_config();
-
-	config_init();
-
-	parse_commandline(argc, argv);
-
-	if ( xkcp_parse_param(config->config_file) ) {
-		debug(LOG_ERR, "xkcp_parse_param failed \n");
-		usage();
-		exit(0);
-	}
-
-	if (config->daemon) {
-
-        debug(LOG_INFO, "Forking into background");
-
-        switch (fork()) {
-        case 0:                /* child */
-            setsid();
-            main_loop();
-            break;
-
-        default:               /* parent */
-            exit(0);
-            break;
-        }
-    } else {
-        main_loop();
-    }
-
-    return (0);                 /* never reached */
-}
