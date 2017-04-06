@@ -16,6 +16,6 @@ void timer_event_cb(evutil_socket_t fd, short event, void *arg);
 
 int xkcp_main(int argc, char **argv);
 
-int main_loop(void);
+int client_main_loop(void);
 
 #endif
