@@ -22,7 +22,8 @@ struct xkcp_param *xkcp_get_param(void)
 
 void config_init()
 {
-	config.daemon = 1;
+	config.daemon 		= 1;
+	config.is_server 	= 0;
 }
 
 static void xkcp_param_free(struct xkcp_param *param)
