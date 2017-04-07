@@ -27,6 +27,18 @@
 #include "xkcp_config.h"
 #include "xkcp_util.h"
 
+char *response = "HTTP/1.1 502 Bad Gateway \r\n \
+Server: nginx/1.4.6 (Ubuntu)\r\n \
+Date: Wed, 05 Apr 2017 10:02:04 GMT\r\n \
+Content-Type: text/html\r\n \
+Connection: keep-alive\r\n\r\n \
+<html>\n \
+<head><title>502 Bad Gateway</title></head>\n \
+<center><h1>502 Bad Gateway</h1></center>\n \
+<hr><center>nginx/1.4.6 (Ubuntu)</center>\n \
+</body>\n \
+</html>\n";
+
 IQUEUE_HEAD(xkcp_task_list);
 
 static int
@@ -46,7 +58,19 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 	iqueue_head *task_list = &xkcp_task_list;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->kcp) {
-			ikcp_update(task->kcp, iclock());		
+			ikcp_update(task->kcp, iclock());	
+			
+			char obuf[OBUF_SIZE];
+			while(1) {
+				memset(obuf, 0, OBUF_SIZE);
+				int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
+				if (nrecv < 0)
+					break;
+		
+				debug(LOG_DEBUG, "ikcp_recv [%d] [%s]", nrecv, obuf);
+				//evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
+				ikcp_send(kcp_client, response, strlen(response));
+			}
 		}
 	}
 	
@@ -55,10 +79,14 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 
 static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 {	
-	char buf[BUF_RECV_LEN] = {0};
-
+	struct event_base *base = arg;
+	struct sockaddr_in clientaddr;
+	int clientlen = sizeof(clientaddr);
+	memset(&clientaddr, 0, clientlen);
+	
 	/* Recv the data, store the address of the sender in server_sin */
-	int len = recvfrom(sock, &buf, sizeof(buf) - 1, 0, (struct sockaddr *) &param->serveraddr, &param->addr_len);
+	char buf[BUF_RECV_LEN] = {0};
+	int len = recvfrom(sock, &buf, sizeof(buf) - 1, 0, (struct sockaddr *) &clientaddr, &clientlen);
 	if (len > 0) {
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp_client = get_kcp_from_conv(conv, &xkcp_task_list);
@@ -66,31 +94,33 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 		if (kcp_client == NULL) {
 			struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
 			memset(param, 0, sizeof(struct xkcp_proxy_param));
+			memcpy(&param->serveraddr, &clientaddr, clientlen);
 			param->udp_fd = sock;
-			param->addr_len = sizeof(struct sockaddr_in);
+			param->addr_len = clientlen;
 			kcp_client = ikcp_create(conv, param);
 			kcp_client->output	= xkcp_output;
 			ikcp_wndsize(kcp_client, 128, 128);
 			ikcp_nodelay(kcp_client, 0, 10, 0, 1);
+			
+			struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
+			assert(task);
+			task->kcp = kcp_client;
+			task->svr_addr = &param->serveraddr;
+			add_task_tail(task, &xkcp_task_list);
 		}
 		
 		ikcp_input(kcp_client, buf, len);
-
-		struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
-		assert(task);
-		task->kcp = kcp_client;
-		task->svr_addr = &param->serveraddr;
-		add_task_tail(task, &xkcp_task_list);
-		
-		while(1) {
-			char data[1024] = {0};
-			if (ikcp_recv(kcp_client, data, 1023) > 0) {
-				debug(LOG_DEBUG, "recv data is %s \n response is %s", data, response);
-				ikcp_send(kcp_client, response, strlen(response));
-			} else
-				break;
-		}
 	} 
+}
+
+static int set_tcp_client()
+{
+	struct bufferevent *bev;
+	
+	bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+	bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, NULL);
+    bufferevent_enable(bev, EV_READ|EV_WRITE);
+	bufferevent_socket_connect(bev,(struct sockaddr *)&sin, sizeof(sin)
 }
 
 static int set_xkcp_listener()
@@ -123,6 +153,7 @@ int server_main_loop()
 	struct event timer_event, *xkcp_event;
 	struct event_base *base;
 	
+	
 	base = event_base_new();
 	if (!base) {
 		debug(LOG_ERR, "event_base_new()");
@@ -137,7 +168,9 @@ int server_main_loop()
 	
 	int xkcp_fd = set_xkcp_listener();
 	
-	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, NULL);
+	set_tcp_client();
+	
+	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, base);
 	event_add(xkcp_event, NULL);
 	
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
@@ -146,6 +179,7 @@ int server_main_loop()
 	event_base_dispatch(base);
 	
 	close(xkcp_fd);
+	bufferevent_free(bev);
 	event_base_free(base);
 
 	return 0;
