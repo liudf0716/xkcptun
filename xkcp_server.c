@@ -26,6 +26,7 @@
 #include "xkcp_server.h"
 #include "xkcp_config.h"
 #include "xkcp_util.h"
+#include "tcp_client.h"
 
 char *response = "HTTP/1.1 502 Bad Gateway \r\n \
 Server: nginx/1.4.6 (Ubuntu)\r\n \
@@ -113,14 +114,20 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 	} 
 }
 
-static int set_tcp_client()
+static struct bufferevent *set_tcp_client()
 {
-	struct bufferevent *bev;
+	struct bufferevent *bev = NULL;
+	struct sockaddr_in sin;
+	memset(&sin, 0, sizeof(sin));
+	sin.sin_family = AF_INET;
+	sin.sin_addr.s_addr = htonl(0x7f000001); /* 127.0.0.1 */
+	sin.sin_port = htons(xkcp_get_param()->remote_port);
 	
 	bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 	bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, NULL);
     bufferevent_enable(bev, EV_READ|EV_WRITE);
-	bufferevent_socket_connect(bev,(struct sockaddr *)&sin, sizeof(sin)
+	bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin));
+							 
 }
 
 static int set_xkcp_listener()
@@ -158,13 +165,7 @@ int server_main_loop()
 	if (!base) {
 		debug(LOG_ERR, "event_base_new()");
 		exit(0);
-	}	
-	
-	struct hostent *server = gethostbyname(xkcp_get_param()->remote_addr);
-	if (!server) {
-		debug(LOG_ERR, "ERROR, no such host as %s", xkcp_get_param()->remote_addr);
-		exit(0);
-	}
+	}		
 	
 	int xkcp_fd = set_xkcp_listener();
 	
