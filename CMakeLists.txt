@@ -5,6 +5,8 @@ project(xkcptun C)
 set(src_xkcp_svr_demo
 	xkcp_svr_demo.c
 	xkcp_util.c
+	xkcp_config.c
+	commandline.c
 	debug.c
 	ikcp.c)
 	
