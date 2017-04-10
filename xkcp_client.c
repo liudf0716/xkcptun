@@ -32,15 +32,6 @@
 
 IQUEUE_HEAD(xkcp_task_list);
 
-static void
-set_timer_interval(struct event *timeout)
-{
-	struct timeval tv;
-	evutil_timerclear(&tv);
-    tv.tv_usec = xkcp_get_param()->interval;
-	event_add(timeout, &tv);
-}
-
 void
 timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
