@@ -110,10 +110,11 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			add_task_tail(task, &xkcp_task_list);
 			
 			struct sockaddr_in sin;
+			short  rport = xkcp_get_param()->remote_port;
 			memset(&sin, 0, sizeof(sin));
 			sin.sin_family = AF_INET;
 			sin.sin_addr.s_addr = htonl(0x7f000001); /* 127.0.0.1 */
-			sin.sin_port = htons(xkcp_get_param()->remote_port);
+			sin.sin_port = htons(rport);
 			
 			struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 			if (!bev) {
@@ -124,6 +125,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
     		bufferevent_enable(bev, EV_READ|EV_WRITE);
 			bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin));
+			debug(LOG_DEBUG, "connect to port %d", rport);
 		}
 		
 		ikcp_input(kcp_client, buf, len);
