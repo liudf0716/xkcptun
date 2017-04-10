@@ -37,8 +37,7 @@ void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 	}
 }
 
-void tcp_client_read_cb(struct evconnlistener *listener, evutil_socket_t fd,
-    struct sockaddr *a, int slen, void *param)
+void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
 {
 	struct xkcp_task *task = ctx;
 	ikcpcb *kcp = task->kcp;
