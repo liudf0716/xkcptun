@@ -75,7 +75,7 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 		}
 	}
 	
-	evtimer_add(timeout, &TIMER_TV);
+	set_timer_interval(timeout);
 }
 
 static void xkcp_rcv_cb(const int sock, short int which, void *arg)
