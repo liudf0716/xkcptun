@@ -11,6 +11,10 @@
 #include <arpa/inet.h>
 #include <net/if.h>
 
+#include <event2/event.h>
+#include <event2/event_struct.h>
+#include <event2/util.h>
+
 #include <syslog.h>
 
 #include "ikcp.h"
@@ -158,4 +162,13 @@ int xkcp_main(int argc, char **argv)
     }
 
     return (0);                 /* never reached */
+}
+
+void
+set_timer_interval(struct event *timeout)
+{
+	struct timeval tv;
+	evutil_timerclear(&tv);
+    tv.tv_usec = xkcp_get_param()->interval;
+	event_add(timeout, &tv);
 }
