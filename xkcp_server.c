@@ -80,7 +80,6 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 
 static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 {	
-	struct bufferevent *bev = arg;
 	struct sockaddr_in clientaddr;
 	int clientlen = sizeof(clientaddr);
 	memset(&clientaddr, 0, clientlen);
@@ -109,31 +108,25 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			task->b_in = bev;
 			task->svr_addr = &param->serveraddr;
 			add_task_tail(task, &xkcp_task_list);
+			
+			struct sockaddr_in sin;
+			memset(&sin, 0, sizeof(sin));
+			sin.sin_family = AF_INET;
+			sin.sin_addr.s_addr = htonl(0x7f000001); /* 127.0.0.1 */
+			sin.sin_port = htons(xkcp_get_param()->remote_port);
+			
+			struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+			if (!bev) {
+				debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
+				exit(EXIT_FAILURE);
+			}
+			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
+    		bufferevent_enable(bev, EV_READ|EV_WRITE);
+			bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin));
 		}
 		
 		ikcp_input(kcp_client, buf, len);
 	} 
-}
-
-static struct bufferevent *set_tcp_client()
-{
-	struct bufferevent *bev = NULL;
-	struct sockaddr_in sin;
-	memset(&sin, 0, sizeof(sin));
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = htonl(0x7f000001); /* 127.0.0.1 */
-	sin.sin_port = htons(xkcp_get_param()->remote_port);
-	
-	bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-	if (!bev) {
-		debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-	bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, NULL);
-    bufferevent_enable(bev, EV_READ|EV_WRITE);
-	bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin));
-
-	return bev;
 }
 
 static int set_xkcp_listener()
@@ -166,7 +159,6 @@ int server_main_loop()
 	struct event timer_event, 
 	  			*xkcp_event = NULL;
 	struct event_base *base = NULL;
-	struct bufferevent *bev = NULL;
 	
 	base = event_base_new();
 	if (!base) {
@@ -176,9 +168,7 @@ int server_main_loop()
 	
 	int xkcp_fd = set_xkcp_listener();
 	
-	bev = set_tcp_client();
-	
-	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, bev);
+	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, NULL);
 	event_add(xkcp_event, NULL);
 	
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
