@@ -80,13 +80,14 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 
 static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 {	
+	struct event_base *base = arg;
 	struct sockaddr_in clientaddr;
 	int clientlen = sizeof(clientaddr);
 	memset(&clientaddr, 0, clientlen);
 	
 	/* Recv the data, store the address of the sender in server_sin */
 	char buf[BUF_RECV_LEN] = {0};
-	int len = recvfrom(sock, &buf, sizeof(buf) - 1, 0, (struct sockaddr *) &clientaddr, &clientlen);
+	int len = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr *) &clientaddr, &clientlen);
 	if (len > 0) {
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp_client = get_kcp_from_conv(conv, &xkcp_task_list);
@@ -104,8 +105,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			
 			struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 			assert(task);
-			task->kcp = kcp_client;
-			task->b_in = bev;
+			task->kcp = kcp_client;		
 			task->svr_addr = &param->serveraddr;
 			add_task_tail(task, &xkcp_task_list);
 			
@@ -120,6 +120,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 				debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
 				exit(EXIT_FAILURE);
 			}
+			task->b_in = bev;
 			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
     		bufferevent_enable(bev, EV_READ|EV_WRITE);
 			bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin));
@@ -168,7 +169,7 @@ int server_main_loop()
 	
 	int xkcp_fd = set_xkcp_listener();
 	
-	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, NULL);
+	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, base);
 	event_add(xkcp_event, NULL);
 	
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
@@ -177,7 +178,6 @@ int server_main_loop()
 	event_base_dispatch(base);
 	
 	close(xkcp_fd);
-	bufferevent_free(bev);
 	event_base_free(base);
 
 	return 0;
