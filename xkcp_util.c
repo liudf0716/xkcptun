@@ -15,6 +15,8 @@
 
 #include "ikcp.h"
 #include "xkcp_util.h"
+#include "xkcp_config.h"
+#include "commandline.h"
 #include "debug.h"
 
 void itimeofday(long *sec, long *usec)
