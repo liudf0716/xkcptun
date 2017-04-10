@@ -1,6 +1,6 @@
 {
   "localinterface": "eth0",
-  "remoteaddr": "121.194.169.198",
+  "remoteaddr": "12.194.169.198",
   "key": "14789632a",
   "crypt": "none",
   "mode": "fast3",
