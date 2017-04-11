@@ -61,17 +61,7 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 		if (task->kcp) {
 			ikcp_update(task->kcp, iclock());	
 			
-			char obuf[OBUF_SIZE];
-			while(1) {
-				memset(obuf, 0, OBUF_SIZE);
-				int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
-				if (nrecv < 0)
-					break;
-		
-				debug(LOG_DEBUG, "timer_event_cb -- ikcp_recv [%d] ", nrecv);
-				evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
-				//ikcp_send(kcp_client, response, strlen(response));
-			}
+			xkcp_forward_data(task);
 		}
 	}
 	
