@@ -60,8 +60,6 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->kcp) {
 			ikcp_update(task->kcp, iclock());	
-			
-			xkcp_forward_data(task);
 		}
 	}
 	
@@ -124,6 +122,8 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 		
 		ikcp_input(kcp_client, buf, len);
 	} 
+	
+	xkcp_forward_all_data(&xkcp_task_list);
 }
 
 static int set_xkcp_listener()
