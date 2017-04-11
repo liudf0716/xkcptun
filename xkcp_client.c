@@ -32,6 +32,19 @@
 
 IQUEUE_HEAD(xkcp_task_list);
 
+static void xkcp_forward_data(struct xkcp_task *task)
+{
+	while(1) {
+		char obuf[OBUF_SIZE] = {0};
+		int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
+		if (nrecv < 0)
+			break;
+
+		debug(LOG_DEBUG, "xkcp_forward_data [%d] [%s]", nrecv, obuf);
+		evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
+	}
+}
+
 void
 timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
@@ -42,16 +55,7 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 		if (task->kcp) {
 			ikcp_update(task->kcp, iclock());
 			
-			char obuf[OBUF_SIZE];
-			while(1) {
-				memset(obuf, 0, OBUF_SIZE);
-				int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
-				if (nrecv < 0)
-					break;
-		
-				debug(LOG_DEBUG, "ikcp_recv [%d] [%s]", nrecv, obuf);
-				evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
-			}
+			xkcp_forward_data(task);
 		}
 	}
 
@@ -72,6 +76,10 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 			  sock, nrecv, conv, kcp?1:0);
 		if (kcp) {
 			ikcp_input(kcp, buf, nrecv);
+			
+			xkcp_forward_data(task);
+		} else {
+			debug(LOG_ERR, "xkcp_rcv_cb -- cant get kcp from peer data!!!!!!");
 		}
 		memset(buf, 0, XKCP_RECV_BUF_LEN);
 	}
