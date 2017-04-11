@@ -40,6 +40,8 @@ void add_task_tail(struct xkcp_task *task, iqueue_head *head);
 
 void del_task(struct xkcp_task *task);
 
+void xkcp_forward_data(struct xkcp_task *task);
+
 void set_timer_interval(struct event *timeout);
 
 ikcpcb *get_kcp_from_conv(int conv, iqueue_head *task_list);
