@@ -68,7 +68,7 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 				if (nrecv < 0)
 					break;
 		
-				debug(LOG_DEBUG, "ikcp_recv [%d] ", nrecv);
+				debug(LOG_DEBUG, "timer_event_cb -- ikcp_recv [%d] ", nrecv);
 				evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
 				//ikcp_send(kcp_client, response, strlen(response));
 			}
@@ -91,7 +91,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 	if (len > 0) {
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp_client = get_kcp_from_conv(conv, &xkcp_task_list);
-		debug(LOG_DEBUG, "sock %d conv is %d, kcp_client is %d", sock, conv, kcp_client?1:0);
+		debug(LOG_DEBUG, "xkcp_rcv_cb -- sock %d conv is %d, kcp_client is %d", sock, conv, kcp_client?1:0);
 		if (kcp_client == NULL) {
 			struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
 			memset(param, 0, sizeof(struct xkcp_proxy_param));
