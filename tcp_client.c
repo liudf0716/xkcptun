@@ -27,6 +27,7 @@ void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 		if (task) {
 			debug(LOG_DEBUG, "tcp_client_event_cb what is [%d] socket [%d]", 
 				  what, bufferevent_getfd(bev));
+			xkcp_forward_data(task);
 			del_task(task);
 			ikcp_release(task->kcp);
 			if (task->b_in != bev) {
