@@ -60,6 +60,9 @@ tcp_proxy_event_cb(struct bufferevent *bev, short what, void *ctx)
 
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		if (task) {
+			debug(LOG_DEBUG, "tcp_proxy_event_cb [%d], destroy conv [%d]", 
+				  what, task->kcp->conv);
+			xkcp_forward_data(task);
 			del_task(task);
 			ikcp_release(task->kcp);
 			if (task->b_in != bev) {
