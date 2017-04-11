@@ -124,7 +124,8 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			task->b_in = bev;
 			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
     		bufferevent_enable(bev, EV_READ|EV_WRITE);
-			if (bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin))) {
+			if (bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+				bufferevent_free(bev);
 				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
 				exit(EXIT_FAILURE);
 			}
