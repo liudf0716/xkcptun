@@ -68,7 +68,7 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 				if (nrecv < 0)
 					break;
 		
-				debug(LOG_DEBUG, "ikcp_recv [%d] [%s]", nrecv, obuf);
+				debug(LOG_DEBUG, "ikcp_recv [%d] ", nrecv);
 				evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
 				//ikcp_send(kcp_client, response, strlen(response));
 			}
@@ -124,8 +124,11 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			task->b_in = bev;
 			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
     		bufferevent_enable(bev, EV_READ|EV_WRITE);
-			bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin));
-			debug(LOG_DEBUG, "connect to port %d", rport);
+			if (bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin))) {
+				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
+				exit(EXIT_FAILURE);
+			}
+			debug(LOG_DEBUG, "connect to port %d success", rport);
 		}
 		
 		ikcp_input(kcp_client, buf, len);
