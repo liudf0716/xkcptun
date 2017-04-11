@@ -63,8 +63,6 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 			  sock, nrecv, conv, kcp?1:0);
 		if (kcp) {
 			ikcp_input(kcp, buf, nrecv);
-			
-			xkcp_forward_data(task);
 		} else {
 			debug(LOG_ERR, "xkcp_rcv_cb -- cant get kcp from peer data!!!!!!");
 		}
