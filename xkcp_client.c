@@ -32,19 +32,6 @@
 
 IQUEUE_HEAD(xkcp_task_list);
 
-static void xkcp_forward_data(struct xkcp_task *task)
-{
-	while(1) {
-		char obuf[OBUF_SIZE] = {0};
-		int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
-		if (nrecv < 0)
-			break;
-
-		debug(LOG_DEBUG, "xkcp_forward_data [%d] [%s]", nrecv, obuf);
-		evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
-	}
-}
-
 void
 timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
