@@ -27,7 +27,8 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;
 	int nret = sendto(ptr->udp_fd, buf, len, 0, (struct sockaddr *)&ptr->serveraddr, sizeof(ptr->serveraddr));
-	debug(LOG_DEBUG, "sendto [%d] [%s]", nret, strerror(errno));
+	debug(LOG_DEBUG, "xkcp_output conv [%d] fd [%d] len [%d], send datagram from %d (%s)", 
+		  kcp->conv, ptr->udp_fd, len, nret, strerror(errno));
 	return nret;
 }
 
