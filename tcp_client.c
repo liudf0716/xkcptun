@@ -26,16 +26,6 @@ void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		if (task) {
 			debug(LOG_DEBUG, "tcp_client_event_cb what is [%d]", what);
-			while(1) {
-				char obuf[OBUF_SIZE] = {0};
-				int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
-				if (nrecv < 0)
-					break;
-		
-				debug(LOG_DEBUG, "tcp_client_event_cb ikcp_recv [%d] ", nrecv);
-				evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
-			}
-			
 			del_task(task);
 			ikcp_release(task->kcp);
 			if (task->b_in != bev) {
