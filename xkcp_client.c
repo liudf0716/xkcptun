@@ -65,10 +65,11 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 	char buf[XKCP_RECV_BUF_LEN] = {0};
 	int nrecv = 0;
 	
-	debug(LOG_DEBUG, "xkcp_rcv_cb [%d]", sock);
-	
 	while ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &ptr->serveraddr, &ptr->addr_len)) > 0) {
-		ikcpcb *kcp = get_kcp_from_conv(ikcp_getconv(buf), &xkcp_task_list);
+		int conv = ikcp_getconv(buf);
+		ikcpcb *kcp = get_kcp_from_conv(conv, &xkcp_task_list);
+		debug(LOG_DEBUG, "xkcp_rcv_cb [%d] len [%d] conv [%d] kcp is [%d]", 
+			  sock, nrecv, conv, kcp?1:0);
 		if (kcp) {
 			ikcp_input(kcp, buf, nrecv);
 		}
