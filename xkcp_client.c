@@ -41,8 +41,6 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->kcp) {
 			ikcp_update(task->kcp, iclock());
-			
-			xkcp_forward_data(task);
 		}
 	}
 
@@ -56,11 +54,12 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 	char buf[XKCP_RECV_BUF_LEN] = {0};
 	int nrecv = 0;
 	
+	int index = 0;
 	while ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &ptr->serveraddr, &ptr->addr_len)) > 0) {
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp = get_kcp_from_conv(conv, &xkcp_task_list);
-		debug(LOG_DEBUG, "xkcp_rcv_cb [%d] len [%d] conv [%d] kcp is [%d]", 
-			  sock, nrecv, conv, kcp?1:0);
+		debug(LOG_DEBUG, "[%d] xkcp_rcv_cb [%d] len [%d] conv [%d] kcp is [%d]", 
+			  index++, sock, nrecv, conv, kcp?1:0);
 		if (kcp) {
 			ikcp_input(kcp, buf, nrecv);
 		} else {
@@ -68,6 +67,8 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 		}
 		memset(buf, 0, XKCP_RECV_BUF_LEN);
 	}
+	
+	xkcp_forward_all_data(&xkcp_task_list);
 }
 
 static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, void *ptr)
