@@ -117,6 +117,16 @@ del_task(struct xkcp_task *task) {
 	__list_del(entry->prev, entry->next);	
 }
 
+void xkcp_forward_all_data(iqueue_head *task_list)
+{
+	struct xkcp_task *task;
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		if (task->kcp) {
+			xkcp_forward_data(task);
+		}
+	}
+}
+
 void xkcp_forward_data(struct xkcp_task *task)
 {
 	while(1) {
