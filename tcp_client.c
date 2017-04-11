@@ -53,7 +53,7 @@ void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
 		char *data = malloc(len);
 		memset(data, 0, len);
 		evbuffer_copyout(src, data, len);
-		debug(LOG_DEBUG, "read data from server [%d] --> ikcp_send", len);
+		debug(LOG_DEBUG, "tcp_client_read_cb --- read data from server [%d] --> ikcp_send", len);
 		ikcp_send(kcp, data, len);
 		free(data);
 	}
