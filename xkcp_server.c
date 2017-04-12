@@ -77,11 +77,12 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 	char buf[BUF_RECV_LEN] = {0};
 	int len = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr *) &clientaddr, &clientlen);
 	if (len > 0) {
+		struct xkcp_proxy_param *param = NULL;
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp_client = get_kcp_from_conv(conv, &xkcp_task_list);
 		debug(LOG_DEBUG, "xkcp_rcv_cb -- sock %d conv is %d, kcp_client is %d", sock, conv, kcp_client?1:0);
 		if (kcp_client == NULL) {
-			struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
+			param = malloc(sizeof(struct xkcp_proxy_param));
 			memset(param, 0, sizeof(struct xkcp_proxy_param));
 			memcpy(&param->serveraddr, &clientaddr, clientlen);
 			param->udp_fd = sock;
@@ -90,31 +91,34 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			kcp_client->output	= xkcp_output;
 			ikcp_wndsize(kcp_client, 128, 128);
 			ikcp_nodelay(kcp_client, 0, 10, 0, 1);
-			
-			struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
-			assert(task);
-			task->kcp = kcp_client;		
-			task->svr_addr = &param->serveraddr;
-			add_task_tail(task, &xkcp_task_list);
-			
-			struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-			if (!bev) {
-				debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
-				exit(EXIT_FAILURE);
-			}
-			task->b_in = bev;
-			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
-    		bufferevent_enable(bev, EV_READ|EV_WRITE);
-			if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, 
-												   xkcp_get_param()->remote_addr,
-												   xkcp_get_param()->remote_port) < 0) {
-				bufferevent_free(bev);
-				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
-				exit(EXIT_FAILURE);
-			}
-			debug(LOG_DEBUG, "connect to [%s]:[%d] success", 
-				  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
+		} else {
+			param = kcp_client->user;
 		}
+		
+		struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
+		assert(task);
+		task->kcp = kcp_client;		
+		task->svr_addr = &param->serveraddr;
+		add_task_tail(task, &xkcp_task_list);
+
+		struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+		if (!bev) {
+			debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		task->b_in = bev;
+		bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
+		bufferevent_enable(bev, EV_READ|EV_WRITE);
+		if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, 
+											   xkcp_get_param()->remote_addr,
+											   xkcp_get_param()->remote_port) < 0) {
+			bufferevent_free(bev);
+			debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		debug(LOG_DEBUG, "connect to [%s]:[%d] success", 
+			  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
+		
 		
 		ikcp_input(kcp_client, buf, len);
 	} 
