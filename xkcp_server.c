@@ -112,7 +112,8 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
 				exit(EXIT_FAILURE);
 			}
-			debug(LOG_DEBUG, "connect to port %d success", rport);
+			debug(LOG_DEBUG, "connect to [%s]:[%d] success", 
+				  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
 		}
 		
 		ikcp_input(kcp_client, buf, len);
