@@ -64,13 +64,11 @@ tcp_proxy_event_cb(struct bufferevent *bev, short what, void *ctx)
 		if (task) {
 			debug(LOG_DEBUG, "tcp_proxy_event_cb [%d], destroy conv [%d]", 
 				  what, task->kcp->conv);
-			xkcp_forward_data(task);
-			del_task(task);
 			if (task->b_in != bev) {
 				bufferevent_free(task->b_in);
 				printf("impossible here\n");
 			}
-			free(task);
+			task->b_in = NULL;
 		}
 		bufferevent_free(bev);
 	}
