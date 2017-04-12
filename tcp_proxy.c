@@ -22,8 +22,6 @@
 
 extern iqueue_head xkcp_task_list;
 
-static ikcpcb *kcp_client = NULL;
-
 static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
@@ -89,12 +87,12 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	debug(LOG_DEBUG, "accept new client in");
 
 	static int conv = 100;
-	if (kcp_client == NULL) {
-		kcp_client 	= ikcp_create(conv, param);
-		kcp_client->output	= xkcp_output;
-		ikcp_wndsize(kcp_client, 128, 128);
-		ikcp_nodelay(kcp_client, 0, 10, 0, 1);
-	}
+	ikcpcb *kcp_client 	= ikcp_create(conv, param);
+	kcp_client->output	= xkcp_output;
+	ikcp_wndsize(kcp_client, 128, 128);
+	ikcp_nodelay(kcp_client, 0, 10, 0, 1);
+	conv++;
+
 	
 	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 	assert(task);
