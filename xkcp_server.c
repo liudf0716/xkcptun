@@ -92,8 +92,8 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			param->addr_len = clientlen;
 			kcp_server = ikcp_create(conv, param);
 			kcp_server->output	= xkcp_output;
-			ikcp_wndsize(kcp_client, 128, 128);
-			ikcp_nodelay(kcp_client, 0, 10, 0, 1);
+			ikcp_wndsize(kcp_server, 128, 128);
+			ikcp_nodelay(kcp_server, 0, 10, 0, 1);
 		} else {
 			param = kcp_server->user;
 		}
