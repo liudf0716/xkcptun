@@ -42,6 +42,8 @@ Connection: keep-alive\r\n\r\n \
 
 IQUEUE_HEAD(xkcp_task_list);
 
+static ikcpcb *kcp_server = NULL;
+
 static int
 xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
@@ -63,6 +65,8 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 		}
 	}
 	
+	xkcp_forward_all_data(&xkcp_task_list);
+	
 	set_timer_interval(timeout);
 }
 
@@ -79,25 +83,24 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 	if (len > 0) {
 		struct xkcp_proxy_param *param = NULL;
 		int conv = ikcp_getconv(buf);
-		ikcpcb *kcp_client = get_kcp_from_conv(conv, &xkcp_task_list);
-		debug(LOG_DEBUG, "xkcp_rcv_cb -- sock %d conv is %d, kcp_client is %d", sock, conv, kcp_client?1:0);
-		if (kcp_client == NULL) {
+		debug(LOG_DEBUG, "xkcp_rcv_cb -- sock %d conv is %d, kcp_server is %d", sock, conv, kcp_server?1:0);
+		if (kcp_server == NULL) {
 			param = malloc(sizeof(struct xkcp_proxy_param));
 			memset(param, 0, sizeof(struct xkcp_proxy_param));
 			memcpy(&param->serveraddr, &clientaddr, clientlen);
 			param->udp_fd = sock;
 			param->addr_len = clientlen;
-			kcp_client = ikcp_create(conv, param);
-			kcp_client->output	= xkcp_output;
+			kcp_server = ikcp_create(conv, param);
+			kcp_server->output	= xkcp_output;
 			ikcp_wndsize(kcp_client, 128, 128);
 			ikcp_nodelay(kcp_client, 0, 10, 0, 1);
 		} else {
-			param = kcp_client->user;
+			param = kcp_server->user;
 		}
 		
 		struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 		assert(task);
-		task->kcp = kcp_client;		
+		task->kcp = kcp_server;		
 		task->svr_addr = &param->serveraddr;
 		add_task_tail(task, &xkcp_task_list);
 
@@ -122,8 +125,6 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 		
 		ikcp_input(kcp_client, buf, len);
 	} 
-	
-	xkcp_forward_all_data(&xkcp_task_list);
 }
 
 static int set_xkcp_listener()
