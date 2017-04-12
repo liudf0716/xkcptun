@@ -32,7 +32,7 @@ void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 			ikcp_release(task->kcp);
 			if (task->b_in != bev) {
 				bufferevent_free(task->b_in);
-				printf("impossible here\n");
+				debug(LOG_ERR, "impossible here\n");
 			}
 			free(task);
 		}
