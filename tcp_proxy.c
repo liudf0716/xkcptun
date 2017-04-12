@@ -64,7 +64,6 @@ tcp_proxy_event_cb(struct bufferevent *bev, short what, void *ctx)
 				  what, task->kcp->conv);
 			xkcp_forward_data(task);
 			del_task(task);
-			ikcp_release(task->kcp);
 			if (task->b_in != bev) {
 				bufferevent_free(task->b_in);
 				printf("impossible here\n");
