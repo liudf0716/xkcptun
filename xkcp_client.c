@@ -45,6 +45,7 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	}
 	
 	xkcp_forward_all_data(&xkcp_task_list);
+	xkcp_check_task_status(&xkcp_task_list);
 	
 	set_timer_interval(timeout);
 }
