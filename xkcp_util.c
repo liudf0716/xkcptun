@@ -126,7 +126,7 @@ void xkcp_check_task_status(iqueue_head *task_list)
 		}
 	}
 	
-	if (task) {
+	if (task != task_list) {
 		del_task(task);
 		debug(LOG_DEBUG, "delete empty task ");
 	}
