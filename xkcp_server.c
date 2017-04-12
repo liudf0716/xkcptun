@@ -97,13 +97,6 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			task->svr_addr = &param->serveraddr;
 			add_task_tail(task, &xkcp_task_list);
 			
-			struct sockaddr_in sin;
-			short  rport = xkcp_get_param()->remote_port;
-			memset(&sin, 0, sizeof(sin));
-			sin.sin_family = AF_INET;
-			sin.sin_addr.s_addr = htonl(0x7f000001); /* 127.0.0.1 */
-			sin.sin_port = htons(rport);
-			
 			struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 			if (!bev) {
 				debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
@@ -112,7 +105,9 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			task->b_in = bev;
 			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
     		bufferevent_enable(bev, EV_READ|EV_WRITE);
-			if (bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+			if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, 
+												   xkcp_get_param()->remote_addr,
+												   xkcp_get_param()->remote_port) < 0) {
 				bufferevent_free(bev);
 				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
 				exit(EXIT_FAILURE);
