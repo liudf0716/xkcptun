@@ -123,7 +123,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
 		
 		
-		ikcp_input(kcp_client, buf, len);
+		ikcp_input(kcp_server, buf, len);
 	} 
 }
 
