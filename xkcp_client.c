@@ -43,7 +43,9 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 			ikcp_update(task->kcp, iclock());
 		}
 	}
-
+	
+	xkcp_forward_all_data(&xkcp_task_list);
+	
 	set_timer_interval(timeout);
 }
 
@@ -67,8 +69,6 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 		}
 		memset(buf, 0, XKCP_RECV_BUF_LEN);
 	}
-	
-	xkcp_forward_all_data(&xkcp_task_list);
 }
 
 static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, void *ptr)
