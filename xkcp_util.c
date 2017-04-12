@@ -117,6 +117,21 @@ del_task(struct xkcp_task *task) {
 	__list_del(entry->prev, entry->next);	
 }
 
+void xkcp_check_task_status(iqueue_head *task_list)
+{
+	struct xkcp_task *task;
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		if (task->b_in == NULL) {
+			break;
+		}
+	}
+	
+	if (task) {
+		del_task(task);
+		debug(LOG_DEBUG, "delete empty task ");
+	}
+}
+
 void xkcp_forward_all_data(iqueue_head *task_list)
 {
 	struct xkcp_task *task;
