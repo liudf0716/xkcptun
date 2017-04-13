@@ -34,6 +34,8 @@ IINT64 iclock64(void);
 
 IUINT32 iclock();
 
+int get_task_list_count();
+
 char *get_iface_ip(const char *ifname);
 
 void add_task_tail(struct xkcp_task *task, iqueue_head *head);
