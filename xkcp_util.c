@@ -120,15 +120,17 @@ del_task(struct xkcp_task *task) {
 void xkcp_check_task_status(iqueue_head *task_list)
 {
 	struct xkcp_task *task;
+	int flag = 0;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->b_in == NULL && task->kcp) {
 			ikcp_flush(task->kcp);
 			debug(LOG_DEBUG, "ikcp_flush kcp ");
+			flag = 1;
 			break;
 		}
 	}
 	
-	if (task != task_list) {
+	if (flag) {
 		del_task(task);
 		debug(LOG_DEBUG, "delete empty task ");
 	}
