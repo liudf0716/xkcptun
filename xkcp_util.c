@@ -271,7 +271,7 @@ void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
 		}
 	}
 	
-	xkcp_forward_all_data(task_list);
+	//xkcp_forward_all_data(task_list);
 	
 	set_timer_interval(timeout);
 }
