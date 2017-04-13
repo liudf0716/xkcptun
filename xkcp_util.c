@@ -151,7 +151,10 @@ void xkcp_forward_data(struct xkcp_task *task)
 			break;
 
 		debug(LOG_DEBUG, "xkcp_forward_data conv [%d] send [%d]", task->kcp->conv, nrecv);
-		evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
+		if (task->b_in)
+			evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
+		else
+			debug(LOG_INFO, "this task has finished");
 	}
 }
 
