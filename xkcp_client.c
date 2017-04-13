@@ -58,7 +58,7 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 		}
 		memset(buf, 0, XKCP_RECV_BUF_LEN);
 		
-		xkcp_forward_all_data(task_list);
+		xkcp_forward_all_data( &xkcp_task_list);
 	}
 }
 
