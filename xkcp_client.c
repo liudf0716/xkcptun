@@ -35,19 +35,7 @@ IQUEUE_HEAD(xkcp_task_list);
 void
 timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
-	struct event *timeout = arg;
-	struct xkcp_task *task;
-	iqueue_head *task_list = &xkcp_task_list;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp) {
-			ikcp_update(task->kcp, iclock());
-		}
-	}
-	
-	xkcp_forward_all_data(&xkcp_task_list);
-	xkcp_check_task_status(&xkcp_task_list);
-	
-	set_timer_interval(timeout);
+	xkcp_timer_event_cb(arg, &xkcp_task_list);
 }
 
 void
