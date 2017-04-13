@@ -27,6 +27,13 @@
 #include "commandline.h"
 #include "debug.h"
 
+static int task_list_count = 0;
+
+int get_task_list_count()
+{
+	return task_list_count;
+}
+
 void itimeofday(long *sec, long *usec)
 {
 	struct timeval time;
@@ -268,9 +275,11 @@ set_timer_interval(struct event *timeout)
 void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
 {
 	struct xkcp_task *task;
+	task_list_count = 0;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->kcp) {
 			ikcp_update(task->kcp, iclock());	
+			task_list_count++;
 		}
 	}
 	
