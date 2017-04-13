@@ -66,7 +66,6 @@ static void timer_event_cb(int nothing, short int which, void *ev)
 	}
 	
 	xkcp_forward_all_data(&xkcp_task_list);
-	xkcp_check_task_status(&xkcp_task_list);
 	
 	set_timer_interval(timeout);
 }
