@@ -38,7 +38,7 @@ tcp_proxy_read_cb(struct bufferevent *bev, void *ctx)
 	struct xkcp_task *task = ctx;
 	ikcpcb *kcp = task->kcp;
 	xkcp_tcp_read_cb(bev, kcp);
-	xkcp_forward_all_data(task_list);
+	xkcp_forward_all_data(&xkcp_task_list);
 }
 
 static void
