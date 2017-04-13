@@ -260,3 +260,17 @@ set_timer_interval(struct event *timeout)
     tv.tv_usec = xkcp_get_param()->interval;
 	event_add(timeout, &tv);
 }
+
+void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
+{
+	struct xkcp_task *task;
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		if (task->kcp) {
+			ikcp_update(task->kcp, iclock());	
+		}
+	}
+	
+	xkcp_forward_all_data(task_list);
+	
+	set_timer_interval(timeout);
+}
