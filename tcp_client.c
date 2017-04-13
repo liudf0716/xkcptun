@@ -21,38 +21,12 @@
 
 void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 {
-	struct xkcp_task *task = ctx;
-
-	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
-		if (task) {
-			debug(LOG_DEBUG, "tcp_client_event_cb what is [%d] socket [%d]", 
-				  what, bufferevent_getfd(bev));
-			if (task->b_in != bev) {
-				bufferevent_free(task->b_in);
-				debug(LOG_ERR, "impossible here\n");
-			}
-			task->b_in = NULL;
-		}
-		bufferevent_free(bev);
-	}
+	xkcp_tcp_event_cb(bev, what, ctx);
 }
 
 void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
 {
 	struct xkcp_task *task = ctx;
 	ikcpcb *kcp = task->kcp;
-	struct evbuffer *src;
-	size_t	len;
-	
-	src = bufferevent_get_input(bev);
-	len = evbuffer_get_length(src);
-	
-	if (len > 0) {
-		char *data = malloc(len);
-		memset(data, 0, len);
-		evbuffer_copyout(src, data, len);
-		debug(LOG_DEBUG, "tcp_client_read_cb --- read data from server [%d] --> ikcp_send", len);
-		ikcp_send(kcp, data, len);
-		free(data);
-	}
+	xkcp_tcp_read_cb(bev, kcp);
 }
