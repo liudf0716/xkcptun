@@ -83,41 +83,43 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 		}
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp_server = get_kcp_from_conv(conv, &xkcp_task_list);
-		debug(LOG_DEBUG, "xkcp_rcv_cb -- sock %d conv is %d, kcp_server is %d", sock, conv, kcp_server?1:0);
+		debug(LOG_DEBUG, "xkcp_server: xkcp_rcv_cb -- sock %d conv is %d, kcp_server is %d, recv data %d", 
+			  sock, conv, kcp_server?1:0, len);
 		if (kcp_server == NULL) {
 			kcp_server = ikcp_create(conv, param);
 			kcp_server->output	= xkcp_output;
 			ikcp_wndsize(kcp_server, 128, 128);
 			ikcp_nodelay(kcp_server, 0, 10, 0, 1);
+			
+			struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
+			assert(task);
+			task->kcp = kcp_server;		
+			task->svr_addr = &param->serveraddr;
+			add_task_tail(task, &xkcp_task_list);
+			
+			struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+			if (!bev) {
+				debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
+				exit(EXIT_FAILURE);
+			}
+			task->b_in = bev;
+			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
+			bufferevent_enable(bev, EV_READ|EV_WRITE);
+			if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, 
+												   xkcp_get_param()->remote_addr,
+												   xkcp_get_param()->remote_port) < 0) {
+				bufferevent_free(bev);
+				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
+				exit(EXIT_FAILURE);
+			}
+			debug(LOG_DEBUG, "connect to [%s]:[%d] success", 
+				  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
 		} 
-		
-		struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
-		assert(task);
-		task->kcp = kcp_server;		
-		task->svr_addr = &param->serveraddr;
-		add_task_tail(task, &xkcp_task_list);
-
-		struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-		if (!bev) {
-			debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
-			exit(EXIT_FAILURE);
-		}
-		task->b_in = bev;
-		bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
-		bufferevent_enable(bev, EV_READ|EV_WRITE);
-		if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, 
-											   xkcp_get_param()->remote_addr,
-											   xkcp_get_param()->remote_port) < 0) {
-			bufferevent_free(bev);
-			debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
-			exit(EXIT_FAILURE);
-		}
-		debug(LOG_DEBUG, "connect to [%s]:[%d] success", 
-			  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
-		
-		
+			
 		ikcp_input(kcp_server, buf, len);
 	} 
+	
+	xkcp_forward_all_data(&xkcp_task_list);
 }
 
 static int set_xkcp_listener()
