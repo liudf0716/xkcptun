@@ -54,20 +54,9 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	return nret;
 }
 
-static void timer_event_cb(int nothing, short int which, void *ev)
+static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
-	struct event *timeout = ev;
-	struct xkcp_task *task;
-	iqueue_head *task_list = &xkcp_task_list;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp) {
-			ikcp_update(task->kcp, iclock());	
-		}
-	}
-	
-	xkcp_forward_all_data(&xkcp_task_list);
-	
-	set_timer_interval(timeout);
+	xkcp_timer_event_cb(ev, &xkcp_task_list);
 }
 
 static void xkcp_rcv_cb(const int sock, short int which, void *arg)
