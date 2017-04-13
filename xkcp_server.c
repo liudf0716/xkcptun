@@ -44,8 +44,12 @@ IQUEUE_HEAD(xkcp_task_list);
 
 static struct xkcp_proxy_param *param = NULL;
 
-static int
-xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
+iqueue_head * get_xkcp_task_list()
+{
+	return &xkcp_task_list;
+}
+
+static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;
 	int nret = sendto(ptr->udp_fd, buf, len, 0, (struct sockaddr *)&ptr->serveraddr, sizeof(ptr->serveraddr));
