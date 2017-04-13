@@ -117,6 +117,42 @@ del_task(struct xkcp_task *task) {
 	__list_del(entry->prev, entry->next);	
 }
 
+void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
+{
+	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+		if (task) {
+			debug(LOG_DEBUG, "tcp_client_event_cb what is [%d] socket [%d]", 
+				  what, bufferevent_getfd(bev));
+			if (task->b_in != bev) {
+				bufferevent_free(task->b_in);
+				debug(LOG_ERR, "impossible here\n");
+			}
+			ikcp_flush(task->kcp);
+			del_task(task);
+			free(task);
+		}
+		bufferevent_free(bev);
+	}
+}
+
+void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
+{
+	struct evbuffer *src;
+	size_t	len;
+
+	src = bufferevent_get_input(bev);
+	len = evbuffer_get_length(src);
+
+	if (len > 0) {
+		char *data = malloc(len);
+		memset(data, 0, len);
+		evbuffer_copyout(src, data, len);
+		debug(LOG_DEBUG, "read data from client [%d]", len);
+		ikcp_send(kcp, data, len);
+		free(data);
+	}
+}
+
 void xkcp_check_task_status(iqueue_head *task_list)
 {
 	struct xkcp_task *task;
