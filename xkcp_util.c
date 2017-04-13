@@ -147,6 +147,7 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 		char *data = malloc(len);
 		memset(data, 0, len);
 		evbuffer_copyout(src, data, len);
+		evbuffer_drain(src, len);
 		debug(LOG_DEBUG, "read data from client [%d]", len);
 		ikcp_send(kcp, data, len);
 		free(data);
