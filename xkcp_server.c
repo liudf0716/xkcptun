@@ -56,7 +56,7 @@ xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 
 static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
-	xkcp_timer_event_cb(ev, &xkcp_task_list);
+	xkcp_timer_event_cb(arg, &xkcp_task_list);
 }
 
 static void xkcp_rcv_cb(const int sock, short int which, void *arg)
