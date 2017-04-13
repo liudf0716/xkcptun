@@ -190,10 +190,13 @@ void xkcp_forward_data(struct xkcp_task *task)
 	while(1) {
 		char obuf[OBUF_SIZE] = {0};
 		int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
-		debug(LOG_DEBUG, "xkcp_forward_data conv [%d] send [%d]", task->kcp->conv, nrecv);
-		if (nrecv < 0)
+		if (nrecv < 0) {
+			if (nrecv == -3)
+				debug(LOG_INFO, "obuf is small, need to extend it");
 			break;
+		}
 
+		debug(LOG_DEBUG, "xkcp_forward_data conv [%d] send [%d]", task->kcp->conv, nrecv);
 		if (task->b_in)
 			evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
 		else
@@ -270,8 +273,6 @@ void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
 			ikcp_update(task->kcp, iclock());	
 		}
 	}
-	
-	//xkcp_forward_all_data(task_list);
 	
 	set_timer_interval(timeout);
 }
