@@ -131,8 +131,10 @@ void xkcp_check_task_status(iqueue_head *task_list)
 	}
 	
 	if (flag) {
+		debug(LOG_DEBUG, "delete task its kcp conv is %d ", task->kcp->conv);
 		del_task(task);
-		debug(LOG_DEBUG, "delete empty task ");
+		ikcp_release(task->kcp);
+		free(task);
 	}
 }
 
