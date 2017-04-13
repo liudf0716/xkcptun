@@ -4,7 +4,7 @@
 #include "ikcp.h"
 
 #define HTTP_IP_ADDR_LEN	16
-#define	OBUF_SIZE 			15000
+#define	OBUF_SIZE 			4096
 #define	BUF_RECV_LEN		1500
 
 struct event;
