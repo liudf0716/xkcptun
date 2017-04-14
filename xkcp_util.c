@@ -161,10 +161,12 @@ static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 
 void xkcp_set_config_param(ikcpcb *kcp)
 {
-	struct xkcp_config *config = xkcp_get_config();
+	struct xkcp_param *param = xkcp_get_param();
 	kcp->output	= xkcp_output;
-	ikcp_wndsize(kcp, config->sndwnd, config->rcvwnd);
-	ikcp_nodelay(kcp, config->nodelay, config->interval, config->resend, config->nc);
+	ikcp_wndsize(kcp, param->sndwnd, param->rcvwnd);
+	ikcp_nodelay(kcp, param->nodelay, param->interval, param->resend, param->nc);
+	debug(LOG_DEBUG, "sndwnd [%d] rcvwnd [%d] nodelay [%d] interval [%d] resend [%d] nc [%d]",
+		 param->sndwnd, param->rcvwnd, param->nodelay, param->interval, param->resend, param->nc);
 }
 
 void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
