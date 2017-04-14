@@ -28,18 +28,6 @@
 #include "xkcp_util.h"
 #include "tcp_client.h"
 
-char *response = "HTTP/1.1 502 Bad Gateway \r\n \
-Server: nginx/1.4.6 (Ubuntu)\r\n \
-Date: Wed, 05 Apr 2017 10:02:04 GMT\r\n \
-Content-Type: text/html\r\n \
-Connection: keep-alive\r\n\r\n \
-<html>\n \
-<head><title>502 Bad Gateway</title></head>\n \
-<center><h1>502 Bad Gateway</h1></center>\n \
-<hr><center>nginx/1.4.6 (Ubuntu)</center>\n \
-</body>\n \
-</html>\n";
-
 IQUEUE_HEAD(xkcp_task_list);
 
 static struct xkcp_proxy_param *param = NULL;
@@ -47,15 +35,6 @@ static struct xkcp_proxy_param *param = NULL;
 iqueue_head * get_xkcp_task_list()
 {
 	return &xkcp_task_list;
-}
-
-static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
-{
-	struct xkcp_proxy_param *ptr = user;
-	int nret = sendto(ptr->udp_fd, buf, len, 0, (struct sockaddr *)&ptr->serveraddr, sizeof(ptr->serveraddr));
-	debug(LOG_DEBUG, "xkcp_output conv [%d] fd [%d] len [%d], send datagram from %d (%s)", 
-		  kcp->conv, ptr->udp_fd, len, nret, strerror(errno));
-	return nret;
 }
 
 static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
@@ -87,9 +66,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			  sock, conv, kcp_server?1:0, len);
 		if (kcp_server == NULL) {
 			kcp_server = ikcp_create(conv, param);
-			kcp_server->output	= xkcp_output;
-			ikcp_wndsize(kcp_server, 128, 128);
-			ikcp_nodelay(kcp_server, 0, 10, 0, 1);
+			xkcp_set_config_param(kcp_server);
 			
 			struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 			assert(task);
@@ -102,7 +79,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 				debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
 				exit(EXIT_FAILURE);
 			}
-			task->b_in = bev;
+			task->bev = bev;
 			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
 			bufferevent_enable(bev, EV_READ|EV_WRITE);
 			if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, 
@@ -112,7 +89,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
 				exit(EXIT_FAILURE);
 			}
-			debug(LOG_DEBUG, "connect to [%s]:[%d] success", 
+			debug(LOG_INFO, "connect to [%s]:[%d] success", 
 				  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
 		} 
 			
