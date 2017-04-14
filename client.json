@@ -1,6 +1,8 @@
 {
-  "localinterface": "eth0",
-  "remoteaddr": "12.194.169.198",
+  "localinterface": "br-lan",
+  "localport": 9088
+  "remoteaddr": "xkcpserverip",
+  "remoteport": 9089
   "key": "14789632a",
   "crypt": "none",
   "mode": "fast3",
