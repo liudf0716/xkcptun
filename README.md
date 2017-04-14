@@ -22,3 +22,75 @@ cmake ..
 
 ### QuickStart
 
+为方便理解和使用，我们将使用场景放在同一台pc上，pc使用ubuntu系统，我们通过xkcptun来访问本机的http server
+
+假设pc的 eth0 ip 为 192.168.199.18， http server的监听端口为80端口，xkcptun的server和client配置分别如下：
+
+server.json 如下：
+
+{
+  "localinterface": "eth0",
+  "localport": 9089,
+  "remoteaddr": "192.168.199.18",
+  "remoteport": 80,
+  "key": "14789632a",
+  "crypt": "none",
+  "mode": "fast3",
+  "mtu": 1350,
+  "sndwnd": 1024,
+  "rcvwnd": 1024,
+  "datashard": 10,
+  "parityshard": 3,
+  "dscp": 0,
+  "nocomp": true,
+  "acknodelay": false,
+  "nodelay": 0,
+  "interval": 20,
+  "resend": 2,
+  "nc": 1,
+  "sockbuf": 4194304,
+  "keepalive": 10
+}
+
+client.json如下：
+
+{
+  "localinterface": "eth0",
+  "localport": 9088,
+  "remoteaddr": "192.168.199.18",
+  "remoteport": 9089,
+  "key": "14789632a",
+  "crypt": "none",
+  "mode": "fast3",
+  "mtu": 1350,
+  "sndwnd": 1024,
+  "rcvwnd": 1024,
+  "datashard": 10,
+  "parityshard": 3,
+  "dscp": 0,
+  "nocomp": true,
+  "acknodelay": false,
+  "nodelay": 0,
+  "interval": 20,
+  "resend": 2,
+  "nc": 1,
+  "sockbuf": 4194304,
+  "keepalive": 10
+}
+
+分别运行：
+
+xkcp_server -c server.json -f -d 7
+
+xkcp_client -c client.json -f -d 7
+
+
+curl http://192.168.199.18:9088
+
+其执行效果与curl http://192.168.199.18等同
+
+
+### How to contributor(给本项目做贡献)
+
+欢迎大家给本项目提供意见和贡献，提供意见的方法可以在本项目的[Issues]()提，更加欢迎给项目提PULL REQUEST，具体提交PR的方法请参考本本章
+[CONTRIBUTING](https://github.com/liudf0716/xkcptun/blob/master/CONTRIBUTING.md)
