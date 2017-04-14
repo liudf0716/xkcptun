@@ -124,6 +124,13 @@ del_task(struct xkcp_task *task) {
 	__list_del(entry->prev, entry->next);	
 }
 
+void xkcp_set_config_param(ikcpcb *kcp)
+{
+	struct xkcp_config *config = xkcp_get_config();
+	ikcp_wndsize(kcp_client, config->sndwnd, config->rcvwnd);
+	ikcp_nodelay(kcp_client, config->nodelay, config->interval, config->resend, config->nc);
+}
+
 void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
 {
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
