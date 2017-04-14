@@ -60,7 +60,7 @@ struct xkcp_config {
 
 void config_init(void);
 
-struct xkcp_config * xkcp_get_config(void);
+struct xkcp_config *xkcp_get_config(void);
 
 int xkcp_parse_param(const char *filename);
 
