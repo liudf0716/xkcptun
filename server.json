@@ -1,7 +1,7 @@
 {
   "localinterface": "eth0",
   "remoteaddr": "127.0.0.1",
-  "remoteport": 8888,
+  "remoteport": 443,
   "key": "14789632a",
   "crypt": "none",
   "mode": "fast3",
