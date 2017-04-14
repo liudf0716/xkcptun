@@ -42,6 +42,8 @@ void add_task_tail(struct xkcp_task *task, iqueue_head *head);
 
 void del_task(struct xkcp_task *task);
 
+void xkcp_set_config_param(ikcpcb *kcp);
+
 void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task);
 
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp);
