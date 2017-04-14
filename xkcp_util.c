@@ -1,3 +1,24 @@
+/********************************************************************\
+ * This program is free software; you can redistribute it and/or    *
+ * modify it under the terms of the GNU General Public License as   *
+ * published by the Free Software Foundation; either version 2 of   *
+ * the License, or (at your option) any later version.              *
+ *                                                                  *
+ * This program is distributed in the hope that it will be useful,  *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of   *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    *
+ * GNU General Public License for more details.                     *
+ *                                                                  *
+ * You should have received a copy of the GNU General Public License*
+ * along with this program; if not, contact:                        *
+ *                                                                  *
+ * Free Software Foundation           Voice:  +1-617-542-5942       *
+ * 59 Temple Place - Suite 330        Fax:    +1-617-542-2652       *
+ * Boston, MA  02111-1307,  USA       gnu@gnu.org                   *
+ *                                                                  *
+\********************************************************************/
+
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -124,11 +145,26 @@ del_task(struct xkcp_task *task) {
 	__list_del(entry->prev, entry->next);	
 }
 
+static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
+{
+	struct xkcp_proxy_param *ptr = user;
+    int nret = sendto(ptr->udp_fd, buf, len, 0, (struct sockaddr *)&ptr->serveraddr, sizeof(ptr->serveraddr));
+	if (nret > 0)
+    	debug(LOG_DEBUG, "xkcp_output conv [%d] fd [%d] len [%d], send datagram from %d",
+          	kcp->conv, ptr->udp_fd, len, nret);
+	else
+		debug(LOG_INFO, "xkcp_output conv [%d] fd [%d] send datagram error: (%s)",
+          	kcp->conv, ptr->udp_fd, strerror(errno));
+	
+    return nret;
+}
+
 void xkcp_set_config_param(ikcpcb *kcp)
 {
 	struct xkcp_config *config = xkcp_get_config();
-	ikcp_wndsize(kcp_client, config->sndwnd, config->rcvwnd);
-	ikcp_nodelay(kcp_client, config->nodelay, config->interval, config->resend, config->nc);
+	kcp->output	= xkcp_output;
+	ikcp_wndsize(kcp, config->sndwnd, config->rcvwnd);
+	ikcp_nodelay(kcp, config->nodelay, config->interval, config->resend, config->nc);
 }
 
 void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
@@ -137,8 +173,8 @@ void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *ta
 		if (task) {
 			debug(LOG_DEBUG, "tcp_client_event_cb what is [%d] socket [%d]", 
 				  what, bufferevent_getfd(bev));
-			if (task->b_in != bev) {
-				bufferevent_free(task->b_in);
+			if (task->bev != bev) {
+				bufferevent_free(task->bev);
 				debug(LOG_ERR, "impossible here\n");
 			}
 			ikcp_flush(task->kcp);
@@ -168,26 +204,6 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 	}
 }
 
-void xkcp_check_task_status(iqueue_head *task_list)
-{
-	struct xkcp_task *task;
-	int flag = 0;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->b_in == NULL && task->kcp) {
-			ikcp_flush(task->kcp);
-			debug(LOG_DEBUG, "ikcp_flush kcp ");
-			flag = 1;
-			break;
-		}
-	}
-	
-	if (flag) {
-		debug(LOG_DEBUG, "delete task its kcp conv is %d ", task->kcp->conv);
-		del_task(task);
-		ikcp_release(task->kcp);
-		free(task);
-	}
-}
 
 void xkcp_forward_all_data(iqueue_head *task_list)
 {
@@ -212,7 +228,7 @@ void xkcp_forward_data(struct xkcp_task *task)
 
 		debug(LOG_DEBUG, "xkcp_forward_data conv [%d] send [%d]", task->kcp->conv, nrecv);
 		if (task->b_in)
-			evbuffer_add(bufferevent_get_output(task->b_in), obuf, nrecv);
+			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
 		else
 			debug(LOG_INFO, "this task has finished");
 	}
