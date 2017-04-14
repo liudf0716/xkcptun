@@ -173,7 +173,7 @@ void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *ta
 {
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		if (task) {
-			debug(LOG_DEBUG, "tcp_client_event_cb what is [%d] socket [%d]", 
+			debug(LOG_INFO, "tcp_client_event_cb what is [%d] socket [%d]", 
 				  what, bufferevent_getfd(bev));
 			if (task->bev != bev) {
 				bufferevent_free(task->bev);
@@ -200,7 +200,7 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 		memset(data, 0, len);
 		evbuffer_copyout(src, data, len);
 		evbuffer_drain(src, len);
-		debug(LOG_DEBUG, "read data from client [%d]", len);
+		debug(LOG_INFO, "[%d] read data from client [%d]", kcp->conv, len);
 		ikcp_send(kcp, data, len);
 		free(data);
 	}
@@ -228,7 +228,7 @@ void xkcp_forward_data(struct xkcp_task *task)
 			break;
 		}
 
-		debug(LOG_DEBUG, "xkcp_forward_data conv [%d] send [%d]", task->kcp->conv, nrecv);
+		debug(LOG_INFO, "xkcp_forward_data conv [%d] send [%d]", task->kcp->conv, nrecv);
 		if (task->bev)
 			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
 		else
