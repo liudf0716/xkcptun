@@ -22,7 +22,7 @@ struct xkcp_proxy_param {
 struct xkcp_task {
 	iqueue_head			head;
 	ikcpcb				*kcp;
-	struct bufferevent 	*b_in;
+	struct bufferevent 	*bev;
 	struct sockaddr_in	*svr_addr;
 };
 
