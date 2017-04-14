@@ -27,7 +27,7 @@ cmake ..
 假设pc的 eth0 ip 为 192.168.199.18， http server的监听端口为80端口，xkcptun的server和client配置分别如下：
 
 server.json 如下：
-
+```
 {
   "localinterface": "eth0",
   "localport": 9089,
@@ -51,9 +51,10 @@ server.json 如下：
   "sockbuf": 4194304,
   "keepalive": 10
 }
+```
 
 client.json如下：
-
+```
 {
   "localinterface": "eth0",
   "localport": 9088,
@@ -77,6 +78,7 @@ client.json如下：
   "sockbuf": 4194304,
   "keepalive": 10
 }
+```
 
 分别运行：
 
