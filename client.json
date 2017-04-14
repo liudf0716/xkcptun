@@ -1,8 +1,8 @@
 {
   "localinterface": "br-lan",
-  "localport": 9088
+  "localport": 9088,
   "remoteaddr": "xkcpserverip",
-  "remoteport": 9089
+  "remoteport": 9089,
   "key": "14789632a",
   "crypt": "none",
   "mode": "fast3",
