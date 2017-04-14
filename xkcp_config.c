@@ -87,12 +87,12 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 		param->local_interface = strdup(json_object_get_string(j_obj));
 	} else
 		param->local_interface = strdup("br-lan");
+	debug(LOG_DEBUG, "local_interface is %s", param->local_interface);
 	
 	if (json_object_object_get_ex(json_config, "localport", &j_obj)) {
 		param->local_port = json_object_get_int(j_obj);
 	} else
 		param->local_port = 9088;
-	
 	debug(LOG_DEBUG, "local_port is %d", param->local_port);
 
 	if (json_object_object_get_ex(json_config, "remoteaddr", &j_obj)) {
@@ -101,7 +101,8 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 		nret = 1;
 		goto err;
 	}
-
+	debug(LOG_DEBUG, "remote_addr is %s", param->remote_addr);
+	
 	if (json_object_object_get_ex(json_config, "remoteport", &j_obj)) {
 		param->remote_port = json_object_get_int(j_obj);
 	} else
@@ -135,16 +136,22 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 
 	if (json_object_object_get_ex(json_config, "mtu", &j_obj)) {
 		param->mtu = json_object_get_int(j_obj);
-	}
-
+	} else
+		param->mtu = 1400;
+	debug(LOG_DEBUG, "mtu is %d", param->mtu);
+	
 	if (json_object_object_get_ex(json_config, "sndwnd", &j_obj)) {
 		param->sndwnd = json_object_get_int(j_obj);
-	}
-
+	} else
+		param->sndwnd = 32;
+	debug(LOG_DEBUG, "sndwnd is %d", param->sndwnd);
+	
 	if (json_object_object_get_ex(json_config, "rcvwnd", &j_obj)) {
 		param->rcvwnd = json_object_get_int(j_obj);
-	}
-
+	} else
+		param->rcvwnd = 32;
+	debug(LOG_DEBUG, "rcvwnd is %d", param->rcvwnd);
+	
 	if (json_object_object_get_ex(json_config, "datashard", &j_obj)) {
 		param->data_shard = json_object_get_int(j_obj);
 	}
@@ -171,16 +178,22 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 
 	if (json_object_object_get_ex(json_config, "interval", &j_obj)) {
 		param->interval = json_object_get_int(j_obj);
-	}
-
+	} else
+		param->interval = 20;
+	debug(LOG_DEBUG, "interval is %d", param->interval);
+	
 	if (json_object_object_get_ex(json_config, "resend", &j_obj)) {
 		param->resend = json_object_get_int(j_obj);
-	}
-
+	} else
+		param->resend = 0;
+	debug(LOG_DEBUG, "resend is %d", param->resend);
+	
 	if (json_object_object_get_ex(json_config, "nc", &j_obj)) {
 		param->nc = json_object_get_int(j_obj);
-	}
-
+	} else
+		param->nc = 0;
+	debug(LOG_DEBUG, "nc is %d", param->nc);
+	
 	if (json_object_object_get_ex(json_config, "sockbuf", &j_obj)) {
 		param->sock_buf = json_object_get_int(j_obj);
 	}
