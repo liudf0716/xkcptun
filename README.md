@@ -92,5 +92,4 @@ curl http://192.168.199.18:9088
 
 ### How to contributor(给本项目做贡献)
 
-欢迎大家给本项目提供意见和贡献，提供意见的方法可以在本项目的[Issues]()提，更加欢迎给项目提PULL REQUEST，具体提交PR的方法请参考本本章
-[CONTRIBUTING](https://github.com/liudf0716/xkcptun/blob/master/CONTRIBUTING.md)
+欢迎大家给本项目提供意见和贡献，提供意见的方法可以在本项目的[Issues](https://github.com/liudf0716/xkcptun/issues/new)提，更加欢迎给项目提PULL REQUEST，具体提交PR的方法请参考[CONTRIBUTING](https://github.com/liudf0716/xkcptun/blob/master/CONTRIBUTING.md)
