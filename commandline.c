@@ -47,7 +47,6 @@ usage(void)
     fprintf(stdout, "\n");
     fprintf(stdout, "options:\n");
     fprintf(stdout, "  -c [filename] Use this config file\n");
-	fprintf(stdout, "  -s 			 Run as server\n");
     fprintf(stdout, "  -f            Run in foreground\n");
     fprintf(stdout, "  -d <level>    Debug level\n");
     fprintf(stdout, "  -h            Print usage\n");
@@ -80,10 +79,6 @@ parse_commandline(int argc, char **argv)
                 config->config_file = strdup(optarg);
             }
             break;
-		
-		case 's':
-			config->is_server = 1;
-			break;
 				
         case 'f':
             config->daemon = 0;
