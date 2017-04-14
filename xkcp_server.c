@@ -62,7 +62,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 		}
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp_server = get_kcp_from_conv(conv, &xkcp_task_list);
-		debug(LOG_DEBUG, "xkcp_server: xkcp_rcv_cb -- sock %d conv is %d, kcp_server is %d, recv data %d", 
+		debug(LOG_INFO, "xkcp_server: xkcp_rcv_cb -- sock %d conv is %d, kcp_server is %d, recv data %d", 
 			  sock, conv, kcp_server?1:0, len);
 		if (kcp_server == NULL) {
 			kcp_server = ikcp_create(conv, param);
@@ -89,7 +89,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
 				exit(EXIT_FAILURE);
 			}
-			debug(LOG_INFO, "connect to [%s]:[%d] success", 
+			debug(LOG_INFO, "[%d] connect to [%s]:[%d] success", bufferevent_getfd(bev),
 				  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
 		} 
 			
