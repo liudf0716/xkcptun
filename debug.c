@@ -35,7 +35,7 @@
 #include "debug.h"
 
 debugconf_t debugconf = {
-    .debuglevel = LOG_DEBUG,
+    .debuglevel = LOG_INFO,
     .log_stderr = 1,
     .log_syslog = 0,
     .syslog_facility = 0
