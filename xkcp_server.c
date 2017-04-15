@@ -93,7 +93,10 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 				  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
 		} 
 			
-		ikcp_input(kcp_server, buf, len);
+		int nret = ikcp_input(kcp_server, buf, len);
+		if (nret < 0) {
+			debug(LOG_INFO, "[%d] ikcp_input failed [%d]", kcp_server->conv, nret);
+		}
 	} 
 	
 	xkcp_forward_all_data(&xkcp_task_list);
