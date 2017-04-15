@@ -207,11 +207,11 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 	}
 #else
 	char buf[1024] = {0};
-    int  len;
+    int  len, nret;
     struct evbuffer *input = bufferevent_get_input(bev);
-    while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) {
-        debug(LOG_INFO, "conv [%d] read data from client [%d]", kcp->conv, len);
-		ikcp_send(kcp, data, len);
+    while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) { 
+		nret = ikcp_send(kcp, buf, len);
+		debug(LOG_INFO, "conv [%d] read data from client [%d] ikcp_send [%d]", kcp->conv, len, nret);
     }
 #endif
 }
