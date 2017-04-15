@@ -189,23 +189,6 @@ void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *ta
 
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 {
-#if	0
-	struct evbuffer *src;
-	size_t	len;
-
-	src = bufferevent_get_input(bev);
-	len = evbuffer_get_length(src);
-
-	if (len > 0) {
-		char *data = malloc(len);
-		memset(data, 0, len);
-		evbuffer_copyout(src, data, len);
-		evbuffer_drain(src, len);
-		debug(LOG_INFO, "conv [%d] read data from client [%d]", kcp->conv, len);
-		ikcp_send(kcp, data, len);
-		free(data);
-	}
-#else
 	char buf[1024] = {0};
     int  len, nret;
     struct evbuffer *input = bufferevent_get_input(bev);
@@ -213,7 +196,7 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 		nret = ikcp_send(kcp, buf, len);
 		debug(LOG_INFO, "conv [%d] read data from client [%d] ikcp_send [%d]", kcp->conv, len, nret);
     }
-#endif
+
 }
 
 
