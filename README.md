@@ -1,3 +1,8 @@
+[![Build Status][1]][2]
+
+[1]: https://travis-ci.org/liudf0716/xkcptun.svg?branch=master
+[2]: https://travis-ci.org/liudf0716/xkcptun
+
 # xkcptun 基于kcp和libevent2库，用c语言实现的kcptun
 
 xkcptun主要应用于LEDE，openwrt中，其原理如图：
