@@ -72,7 +72,7 @@ void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct sockaddr *a, int slen, void *param)
 {
 	struct bufferevent *b_in = NULL;
-	struct event_base *base = param;
+	struct event_base *base = evconnlistener_get_base(listener);
 	
 	b_in = bufferevent_socket_new(base, fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
