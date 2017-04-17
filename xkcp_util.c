@@ -215,7 +215,7 @@ void dump_task_list(iqueue_head *task_list, struct bufferevent *bev) {
 			dump_task(task, bev, ++task_list_count);
 		}
 	}
-	debug(LOG_DEBUG, );
+	debug(LOG_DEBUG, "dump_task_list number [%d]", task_list_count);
 }
 
 void xkcp_forward_all_data(iqueue_head *task_list)
