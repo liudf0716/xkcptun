@@ -200,6 +200,23 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 
 }
 
+static void dump_task(struct xkcp_task *task, struct bufferevent *bev, int index) {
+	char buf[1024] = {0};
+	snprintf(buf, 1024, "index [%d]\t client fd [%d]\tconv [%d]\n",
+			index, bufferevent_getfd(bev), task->kcp->conv);
+	bufferevent_write(bev, buf, strlen(buf));
+}
+
+void dump_task_list(iqueue_head *task_list, struct bufferevent *bev) {
+	struct xkcp_task *task;
+	task_list_count = 0; 
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		if (task->kcp) {
+			dump_task(task, bev, ++task_list_count);
+		}
+	}
+	debug(LOG_DEBUG, );
+}
 
 void xkcp_forward_all_data(iqueue_head *task_list)
 {
