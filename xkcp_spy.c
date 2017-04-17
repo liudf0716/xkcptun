@@ -105,7 +105,7 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 	
-	evbuffer_add(bufferevent_get_output(bev), cmd, strlen(cmd));
+	evbuffer_write(bufferevent_get_output(bev), cmd, strlen(cmd));
 	
 	event_base_dispatch(base);
 	
