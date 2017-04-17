@@ -82,5 +82,4 @@ void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	
 	bufferevent_setcb(b_in, xkcp_mon_read_cb, NULL, xkcp_mon_event_cb, NULL);
 	bufferevent_enable(b_in,  EV_READ | EV_WRITE | EV_PERSIST);
-	debug(LOG_DEBUG, "HERE");
 }
