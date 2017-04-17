@@ -105,6 +105,7 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 	
+	printf("send cmd %s\n", cmd);
 	evbuffer_write(bev, cmd, strlen(cmd));
 	
 	event_base_dispatch(base);
