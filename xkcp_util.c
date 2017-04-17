@@ -194,7 +194,8 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
     struct evbuffer *input = bufferevent_get_input(bev);
     while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) { 
 		nret = ikcp_send(kcp, buf, len);
-		debug(LOG_INFO, "conv [%d] read data from client [%d] ikcp_send [%d]", kcp->conv, len, nret);
+		debug(LOG_INFO, "conv [%d] read data from client [%d] len [%d] ikcp_send [%d]", 
+			  kcp->conv, bufferevent_getfd(bev), len, nret);
     }
 
 }
@@ -221,7 +222,8 @@ void xkcp_forward_data(struct xkcp_task *task)
 			break;
 		}
 
-		debug(LOG_INFO, "xkcp_forward_data conv [%d] send [%d]", task->kcp->conv, nrecv);
+		debug(LOG_INFO, "xkcp_forward_data conv [%d] client[%d] send [%d]", 
+			  task->kcp->conv, bufferevent_getfd(task->bev), nrecv);
 		if (task->bev)
 			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
 		else
