@@ -82,6 +82,7 @@ int main(int argc, char **argv)
 	
 	addr 	= argv[1];
 	cmd		= argv[2];
+	printf("addr %s \n", addr);
 	
 	base = event_base_new();
 	if (!base) {
