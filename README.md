@@ -1,7 +1,9 @@
-[![Build Status][1]][2]
+[![Build Status][1]][2]  [![Powered][3]][4]
 
 [1]: https://travis-ci.org/liudf0716/xkcptun.svg?branch=master
 [2]: https://travis-ci.org/liudf0716/xkcptun
+[3]: https://img.shields.io/badge/KCP-Powered-blue.svg
+[4]: https://github.com/skywind3000/kcp
 
 # xkcptun 基于kcp和libevent2库，用c语言实现的kcptun
 
