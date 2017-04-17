@@ -26,7 +26,9 @@ cd xkcptun
 mkdir build && cd build
 
 cmake ..
+
 make
+
 
 生成xkcp_client和xkcp_server
 
