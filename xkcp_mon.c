@@ -58,7 +58,7 @@ static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx)
 	struct evbuffer *input = bufferevent_get_input(bev);
 	int len = evbuffer_get_length(input);
 	
-	debug(LOG_DEBUG, "xkcp_mon_read_cb [%D]", len);
+	debug(LOG_DEBUG, "xkcp_mon_read_cb [%d]", len);
 	
 	if ( len > 0) { 
 		char *buf = malloc(len+1);
