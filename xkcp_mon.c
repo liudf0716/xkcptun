@@ -42,7 +42,7 @@ static void process_user_cmd(struct bufferevent *bev, const char *cmd)
 {
 	debug(LOG_DEBUG, "cmd is %s", cmd);
 	if (strcmp(cmd, "status") == 0) {
-		dump_task_list(get_xkcp_task_list());
+		dump_task_list(get_xkcp_task_list(), bev);
 	}
 }
 
