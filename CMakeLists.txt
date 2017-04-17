@@ -9,7 +9,8 @@ set(src_xkcp_server
 	ikcp.c
 	commandline.c
 	xkcp_util.c
-	xkcp_config.c)
+	xkcp_config.c
+	xkcp_mon.c)
 	
 set(src_xkcp_client
 	tcp_proxy.c
