@@ -86,7 +86,7 @@ int main(int argc, char **argv)
 	
 	if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, addr, port) < 0) {
 		bufferevent_free(bev);
-		debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
+		printf("bufferevent_socket_connect failed [%s]", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 	
