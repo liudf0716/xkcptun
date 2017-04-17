@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 2.6)
 
 project(xkcptun C)
 
+set(src_xkcp_spy
+	xkcp_spy.c)
+
 set(src_xkcp_server
 	xkcp_server.c
 	tcp_client.c
@@ -26,6 +29,9 @@ set(libs
 	json-c)
 
 ADD_DEFINITIONS(-O2 -Wall --std=gnu99 -Wmissing-declarations)
+
+add_executable(xkcp_spy ${src_xkcp_spy})
+target_link_libraries(xkcp_spy ${libs})
 
 add_executable(xkcp_client ${src_xkcp_client})
 target_link_libraries(xkcp_client ${libs})
