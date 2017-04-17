@@ -201,10 +201,9 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 }
 
 static void dump_task(struct xkcp_task *task, struct bufferevent *bev, int index) {
-	char buf[1024] = {0};
-	snprintf(buf, 1024, "index [%d]\t client fd [%d]\tconv [%d]\n",
-			index, bufferevent_getfd(bev), task->kcp->conv);
-	bufferevent_write(bev, buf, strlen(buf));
+	struct evbuffer *output = bufferevent_get_output(bev);
+	evbuffer_add_printf(output, "index [%d]\t client fd [%d]\tconv [%d]\n",
+			index, bufferevent_getfd(task->bev), task->kcp->conv);
 }
 
 void dump_task_list(iqueue_head *task_list, struct bufferevent *bev) {
