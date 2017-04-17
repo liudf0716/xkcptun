@@ -1,3 +1,5 @@
+# <img src="logo.png" alt="xkcptun" height="54px" /> 
+
 [![Build Status][1]][2]  [![Powered][3]][4]
 
 [1]: https://travis-ci.org/liudf0716/xkcptun.svg?branch=master
