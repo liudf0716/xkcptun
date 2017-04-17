@@ -61,7 +61,7 @@ static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx)
 		char *buf = malloc(len+1);
 		memset(buf, 0, len+1);
 		if (evbuffer_remove(input, buf, len) > 0)
-			process_user_cmd(buf);
+			process_user_cmd(bev, buf);
 	}
 }
 
