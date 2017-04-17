@@ -42,6 +42,14 @@
 
 static short port = 9087;
 
+static void timeoutcb(evutil_socket_t fd, short what, void *arg)
+{
+	struct event_base *base = arg;
+	printf("timeout\n");
+
+	event_base_loopexit(base, NULL);
+}
+
 static void readcb(struct bufferevent *bev, void *ctx)
 {
 	struct event_base *base = ctx;
@@ -61,6 +69,8 @@ static void usage(const char *prog)
 
 int main(int argc, char **argv)
 {
+	struct event *evtimeout;
+  	struct timeval timeout;
 	struct event_base *base;
   	struct bufferevent *bev;
 	char  *cmd, *addr;
@@ -79,10 +89,15 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	
+	timeout.tv_sec = 2;
+  	timeout.tv_usec = 0;
+	
+	evtimeout = evtimer_new(base, timeoutcb, base);
+  	evtimer_add(evtimeout, &timeout);
+	
 	bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 	bufferevent_setcb(bev, readcb, NULL, NULL, base);
 	bufferevent_enable(bev, EV_READ|EV_WRITE);
-	evbuffer_add(bufferevent_get_output(bev), cmd, strlen(cmd));
 	
 	if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, addr, port) < 0) {
 		bufferevent_free(bev);
@@ -90,8 +105,11 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 	
+	evbuffer_add(bufferevent_get_output(bev), cmd, strlen(cmd));
+	
 	event_base_dispatch(base);
 	
 	bufferevent_free(bev);
+	event_free(evtimeout);
 	event_base_free(base);
 }
