@@ -40,9 +40,58 @@
 #include <event2/listener.h>
 #include <event2/util.h>
 
+static short port = 9087;
+
+static void readcb(struct bufferevent *bev, void *ctx)
+{
+	struct event_base *base = ctx;
+	/* This callback is invoked when there is data to read on bev. */
+	struct evbuffer *input = bufferevent_get_input(bev);
+	struct evbuffer *output = bufferevent_get_output(bev);
+
+	/* Copy all the data from the input buffer to the output buffer. */
+	evbuffer_add_buffer(output, input);
+	event_base_loopexit(base, NULL);
+}
+
+static void usage(const char *prog)
+{
+	printf("%s address cmd [param]\n", prog);
+}
 
 int main(int argc, char **argv)
 {
-  struct event_base *base;
-  struct bufferevent **bevs;
+	struct event_base *base;
+  	struct bufferevent *bev;
+	char  *cmd, *addr;
+	
+	if (argc < 3) {
+		usage(argv[0]);
+		return 1;
+	}
+	
+	addr 	= argv[1];
+	cmd		= argv[2];
+	
+	base = event_base_new();
+	if (!base) {
+		puts("Couldn't open event base");
+		return 1;
+	}
+	
+	bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+	bufferevent_setcb(bev, readcb, NULL, NULL, base);
+	bufferevent_enable(bev, EV_READ|EV_WRITE);
+	evbuffer_add(bufferevent_get_output(bev), cmd, strlen(cmd));
+	
+	if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, addr, port) < 0) {
+		bufferevent_free(bev);
+		debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	
+	event_base_dispatch(base);
+	
+	bufferevent_free(bev);
+	event_base_free(base);
 }
