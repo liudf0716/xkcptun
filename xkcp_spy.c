@@ -57,8 +57,9 @@ static void readcb(struct bufferevent *bev, void *ctx)
 	char buf[1024] = {0};
     int  len;
 	
- 	while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) { 
+ 	while ((len = evbuffer_remove(input, buf, sizeof(buf)-1)) > 0) { 
 		printf("%s", buf);
+		memset(buf, 0, 1024);
     }
 	printf("\n");
 	
