@@ -52,7 +52,7 @@ static void timeoutcb(evutil_socket_t fd, short what, void *arg)
 
 static void eventcb(struct bufferevent *bev, short what, void *ctx)
 {
-	struct event_base *base = arg;
+	struct event_base *base = ctx;
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		event_base_loopexit(base, NULL);
 	}
