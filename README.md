@@ -101,7 +101,7 @@ xkcp_client -c client.json -f -d 7
 
 curl http://192.168.199.18:9088
 
-其执行效果与curl http://192.168.199.18等同
+其执行效果与curl http://192.168.199.18 等同
 
 
 ### How to contributor(给本项目做贡献)
