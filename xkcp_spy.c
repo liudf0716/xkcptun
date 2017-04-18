@@ -50,6 +50,14 @@ static void timeoutcb(evutil_socket_t fd, short what, void *arg)
 	event_base_loopexit(base, NULL);
 }
 
+static void eventcb(struct bufferevent *bev, short what, void *ctx)
+{
+	struct event_base *base = arg;
+	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+		event_base_loopexit(base, NULL);
+	}
+}
+
 static void readcb(struct bufferevent *bev, void *ctx)
 {
 	struct event_base *base = ctx;
@@ -99,7 +107,7 @@ int main(int argc, char **argv)
   	evtimer_add(evtimeout, &timeout);
 	
 	bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-	bufferevent_setcb(bev, readcb, NULL, NULL, base);
+	bufferevent_setcb(bev, readcb, NULL, eventcb, base);
 	bufferevent_enable(bev, EV_READ|EV_WRITE);
 	
 	if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, addr, port) < 0) {
