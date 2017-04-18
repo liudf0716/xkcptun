@@ -53,12 +53,15 @@ static void timeoutcb(evutil_socket_t fd, short what, void *arg)
 static void readcb(struct bufferevent *bev, void *ctx)
 {
 	struct event_base *base = ctx;
-	/* This callback is invoked when there is data to read on bev. */
 	struct evbuffer *input = bufferevent_get_input(bev);
-	struct evbuffer *output = bufferevent_get_output(bev);
-
-	/* Copy all the data from the input buffer to the output buffer. */
-	evbuffer_add_buffer(output, input);
+	char buf[1024] = {0};
+    int  len;
+	
+ 	while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) { 
+		printf("%s", buf);
+    }
+	printf("\n");
+	
 	event_base_loopexit(base, NULL);
 }
 
