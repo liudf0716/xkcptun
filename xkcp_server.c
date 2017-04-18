@@ -97,7 +97,6 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 	int clientlen = sizeof(clientaddr);
 	memset(&clientaddr, 0, clientlen);
 	
-	/* Recv the data, store the address of the sender in server_sin */
 	char buf[BUF_RECV_LEN] = {0};
 	int len = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr *) &clientaddr, &clientlen);
 	if (len > 0) {
@@ -115,13 +114,13 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 		if (kcp_server == NULL) {
 			kcp_server = ikcp_create(conv, param);
 			xkcp_set_config_param(kcp_server);
-			
+
 			struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 			assert(task);
 			task->kcp = kcp_server;		
 			task->svr_addr = &param->serveraddr;
 			add_task_tail(task, &xkcp_task_list);
-			
+
 			struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 			if (!bev) {
 				debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
@@ -140,12 +139,12 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			debug(LOG_INFO, "tcp client [%d] connect to [%s]:[%d] success", bufferevent_getfd(bev),
 				  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
 		} 
-			
+
 		int nret = ikcp_input(kcp_server, buf, len);
 		if (nret < 0) {
 			debug(LOG_INFO, "[%d] ikcp_input failed [%d]", kcp_server->conv, nret);
 		}
-	} 
+	}
 	
 	xkcp_forward_all_data(&xkcp_task_list);
 }
