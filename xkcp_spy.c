@@ -55,17 +55,13 @@ static void readcb(struct bufferevent *bev, void *ctx)
 	struct event_base *base = ctx;
 	struct evbuffer *input = bufferevent_get_input(bev);
 	int  len = evbuffer_get_length(input);
-    
-	printf("read [%d] ================\n", len);
 	
 	if (len > 0) {
 		char *buf = malloc(len+1);
 		memset(buf, 0, len+1);
 		evbuffer_remove(input, buf, len);
-		printf("%s\n", buf);
+		printf("%s", buf);
 	}
-	
-	event_base_loopexit(base, NULL);
 }
 
 static void usage(const char *prog)
