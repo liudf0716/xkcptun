@@ -54,14 +54,14 @@ static void readcb(struct bufferevent *bev, void *ctx)
 {
 	struct event_base *base = ctx;
 	struct evbuffer *input = bufferevent_get_input(bev);
-	char buf[1024] = {0};
-    int  len;
-	
- 	while ((len = evbuffer_remove(input, buf, sizeof(buf)-1)) > 0) { 
-		printf("%s", buf);
-		memset(buf, 0, 1024);
-    }
-	printf("\n");
+	int  len = evbuffer_get_length(input);
+    
+	if (len > 0) {
+		char *buf = malloc(len+1);
+		memset(buf, 0, len+1);
+		evbuffer_remove(input, buf, len);
+		printf("%s\n", buf);
+	}
 	
 	event_base_loopexit(base, NULL);
 }
