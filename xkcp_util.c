@@ -194,7 +194,7 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
     struct evbuffer *input = bufferevent_get_input(bev);
     while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) { 
 		nret = ikcp_send(kcp, buf, len);
-		debug(LOG_INFO, "conv [%d] read data from client [%d] len [%d] ikcp_send [%d]", 
+		debug(LOG_INFO, "xkcp_tcp_read_cb : conv [%d] read data from client [%d] len [%d] ikcp_send [%d]", 
 			  kcp->conv, bufferevent_getfd(bev), len, nret);
     }
 
