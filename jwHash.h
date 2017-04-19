@@ -87,6 +87,13 @@ struct jwHashTable
 jwHashTable *create_hash( size_t buckets );
 void *delete_hash( jwHashTable *table );		// clean up all memory
 
+typedef void (*process_hash_value_callback)(void *value);
+
+
+//<<< liudengfeng added here
+HASHRESULT hash_iterator(jwHashTable *table, process_hash_value_callback process_cb, HASHVALTAG type);
+HASHRESULT get_ptr_by_str(jwHashTable *table, char *key, void **ptr);
+//>>>
 
 // Add to table - keyed by string
 HASHRESULT add_str_by_str( jwHashTable*, char *key, char *value );
