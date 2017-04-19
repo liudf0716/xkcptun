@@ -14,7 +14,7 @@ struct bufferevent;
 
 struct xkcp_proxy_param {
 	struct event_base 	*base;
-	int 				udp_fd;
+	int 				xkcpfd;
 	struct sockaddr_in	sockaddr;
 	int 				addr_len;
 };
@@ -46,13 +46,15 @@ void dump_task_list(iqueue_head *task_list, struct bufferevent *bev);
 
 void xkcp_set_config_param(ikcpcb *kcp);
 
-void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task);
+void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task);
 
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp);
 
 void xkcp_forward_all_data(iqueue_head *task_list);
 
 void xkcp_forward_data(struct xkcp_task *task);
+
+void xkcp_update_task_list(iqueue_head *task_list);
 
 void set_timer_interval(struct event *timeout);
 
