@@ -15,7 +15,7 @@ struct bufferevent;
 struct xkcp_proxy_param {
 	struct event_base 	*base;
 	int 				udp_fd;
-	struct sockaddr_in	serveraddr;
+	struct sockaddr_in	sockaddr;
 	int 				addr_len;
 };
 
@@ -23,7 +23,7 @@ struct xkcp_task {
 	iqueue_head			head;
 	ikcpcb				*kcp;
 	struct bufferevent 	*bev;
-	struct sockaddr_in	*svr_addr;
+	struct sockaddr_in	*sockaddr;
 };
 
 typedef struct xkcp_task xkcp_task_type;
