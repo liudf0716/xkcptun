@@ -31,6 +31,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <net/if.h>
+#include <netinet/tcp.h>
 
 #include <event2/event.h>
 #include <event2/event_struct.h>
@@ -172,8 +173,7 @@ void xkcp_set_config_param(ikcpcb *kcp)
 static void set_tcp_no_delay(evutil_socket_t fd)
 {
   	int one = 1;
-  	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
-    		&one, sizeof one);
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 }
 
 
