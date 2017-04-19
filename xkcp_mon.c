@@ -36,7 +36,6 @@
 #include "xkcp_mon.h"
 #include "xkcp_util.h"
 #include "xkcp_config.h"
-#include "xkcp"
 #include "debug.h"
 
 static void process_user_cmd(struct bufferevent *bev, const char *cmd, void *ctx)
