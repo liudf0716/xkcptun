@@ -58,7 +58,6 @@ static void eventcb(struct bufferevent *bev, short what, void *ctx)
 
 static void readcb(struct bufferevent *bev, void *ctx)
 {
-	struct event_base *base = ctx;
 	struct evbuffer *input = bufferevent_get_input(bev);
 	int  len = evbuffer_get_length(input);
 	
@@ -81,8 +80,8 @@ int main(int argc, char **argv)
   	struct timeval timeout;
 	struct event_base *base;
   	struct bufferevent *bev;
-	char  *cmd = NULL, *addr = NULL, *param = NULL;
-	int  port, opt;
+	char  	*cmd = NULL, *addr = NULL, *param = NULL;
+	int  	port = 0, opt;
 	
 	while((opt = getopt(argc, argv, "h:p:t:m:")) != -1) {
 		switch(opt) {
