@@ -148,10 +148,10 @@ int client_main_loop(void)
 	struct xkcp_proxy_param  proxy_param;
 	memset(&proxy_param, 0, sizeof(proxy_param));
 	proxy_param.base 		= base;
-	proxy_param.udp_fd 		= xkcp_fd;
-	proxy_param.serveraddr.sin_family 	= AF_INET;
-	proxy_param.serveraddr.sin_port		= htons(xkcp_get_param()->remote_port);
-	memcpy((char *)&proxy_param.serveraddr.sin_addr.s_addr, (char *)server->h_addr, server->h_length);
+	proxy_param.xkcpfd 		= xkcp_fd;
+	proxy_param.sockaddr.sin_family 	= AF_INET;
+	proxy_param.sockaddr.sin_port		= htons(xkcp_get_param()->remote_port);
+	memcpy((char *)&proxy_param.sockaddr.sin_addr.s_addr, (char *)server->h_addr, server->h_length);
 	listener = set_tcp_proxy_listener(base, &proxy_param);
 
 	mlistener = set_xkcp_mon_listener(base, mport, &xkcp_task_list);
