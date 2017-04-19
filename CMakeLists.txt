@@ -22,7 +22,8 @@ set(src_xkcp_client
 	xkcp_util.c
 	commandline.c
 	debug.c
-	ikcp.c)
+	ikcp.c
+	xkcp_mon.c)
 
 set(libs
 	event
