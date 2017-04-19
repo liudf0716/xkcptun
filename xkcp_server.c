@@ -164,7 +164,7 @@ int server_main_loop()
 	
 	int xkcp_fd = set_xkcp_listener();
 	
-	mon_listener = set_xkcp_mon_listener(base, mport);
+	mon_listener = set_xkcp_mon_listener(base, mport, &xkcp_task_list);
 		
 	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, base);
 	event_add(xkcp_event, NULL);
