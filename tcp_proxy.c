@@ -81,7 +81,7 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	assert(task);
 	task->kcp = kcp_client;
 	task->bev = b_in;
-	task->svr_addr = &p->serveraddr;
+	task->sockaddr = &p->sockaddr;
 	add_task_tail(task, &xkcp_task_list);
 
 	bufferevent_setcb(b_in, tcp_proxy_read_cb, NULL, tcp_proxy_event_cb, task);
