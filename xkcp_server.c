@@ -60,31 +60,6 @@ iqueue_head * get_xkcp_task_list()
 	return &xkcp_task_list;
 }
 
-static struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, void *ptr)
-{
-	struct sockaddr_in sin;
-	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
-	if (!addr) {
-		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
-		exit(0);
-	}
-
-	memset(&sin, 0, sizeof(sin));
-    sin.sin_family = AF_INET;
-    sin.sin_addr.s_addr = inet_addr(addr);
-    sin.sin_port = htons(mport);
-
-    struct evconnlistener * listener = evconnlistener_new_bind(base, xkcp_mon_accept_cb, ptr,
-	    LEV_OPT_CLOSE_ON_FREE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_REUSEABLE,
-	    -1, (struct sockaddr*)&sin, sizeof(sin));
-    if (!listener) {
-    	debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
-    	exit(0);
-    }
-
-    return listener;
-}
-
 static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
 	xkcp_timer_event_cb(arg, &xkcp_task_list);
@@ -189,7 +164,7 @@ int server_main_loop()
 	
 	int xkcp_fd = set_xkcp_listener();
 	
-	mon_listener = set_xkcp_mon_listener(base, NULL);
+	mon_listener = set_xkcp_mon_listener(base, mport);
 		
 	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, base);
 	event_add(xkcp_event, NULL);
