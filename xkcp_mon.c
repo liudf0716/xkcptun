@@ -35,14 +35,13 @@
 
 #include "xkcp_mon.h"
 #include "xkcp_util.h"
-#include "xkcp_server.h"
 #include "debug.h"
 
-static void process_user_cmd(struct bufferevent *bev, const char *cmd)
+static void process_user_cmd(struct bufferevent *bev, const char *cmd, void *ctx)
 {
 	debug(LOG_DEBUG, "cmd is %s", cmd);
 	if (strcmp(cmd, "status") == 0) {
-		dump_task_list(get_xkcp_task_list(), bev);
+		dump_task_list(ctx, bev);
 	}
 }
 
@@ -74,12 +73,12 @@ static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx)
 		char *buf = malloc(len+1);
 		memset(buf, 0, len+1);
 		if (evbuffer_remove(input, buf, len) > 0)
-			process_user_cmd(bev, buf);
+			process_user_cmd(bev, buf, ctx);
 	} 
 }
 
 void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
-    struct sockaddr *a, int slen, void *param)
+    struct sockaddr *a, int slen, void *ptr)
 {
 	struct bufferevent *b_in = NULL;
 	struct event_base *base = evconnlistener_get_base(listener);
@@ -90,11 +89,11 @@ void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	
 	debug(LOG_INFO, "accept new mon client in");
 	
-	bufferevent_setcb(b_in, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, NULL);
+	bufferevent_setcb(b_in, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, ptr);
 	bufferevent_enable(b_in,  EV_READ | EV_WRITE);
 }
 
-struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, short port)
+struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, short port, void *ptr)
 {
 	struct sockaddr_in sin;
 	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
