@@ -40,9 +40,6 @@
 #include <event2/listener.h>
 #include <event2/util.h>
 
-static short port = 9087;
-
-
 static void timeoutcb(evutil_socket_t fd, short what, void *arg)
 {
 	struct event_base *base = arg;
