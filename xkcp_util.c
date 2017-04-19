@@ -169,6 +169,14 @@ void xkcp_set_config_param(ikcpcb *kcp)
 		 param->sndwnd, param->rcvwnd, param->nodelay, param->interval, param->resend, param->nc);
 }
 
+static void set_tcp_no_delay(evutil_socket_t fd)
+{
+  	int one = 1;
+  	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
+    		&one, sizeof one);
+}
+
+
 void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
 {
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
@@ -184,6 +192,8 @@ void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *ta
 			free(task);
 		}
 		bufferevent_free(bev);
+	} else if (what & BEV_EVENT_CONNECTED) {
+		set_tcp_no_delay(bufferevent_getfd(bev));
 	}
 }
 
