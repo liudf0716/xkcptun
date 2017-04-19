@@ -42,7 +42,9 @@
 
 void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 {
-	xkcp_tcp_event_cb(bev, what, ctx);
+	void *puser = xkcp_tcp_event_cb(bev, what, ctx);
+	if (puser)
+		free(puser);
 }
 
 void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
