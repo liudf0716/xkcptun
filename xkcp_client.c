@@ -1,3 +1,24 @@
+/********************************************************************\
+ * This program is free software; you can redistribute it and/or    *
+ * modify it under the terms of the GNU General Public License as   *
+ * published by the Free Software Foundation; either version 2 of   *
+ * the License, or (at your option) any later version.              *
+ *                                                                  *
+ * This program is distributed in the hope that it will be useful,  *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of   *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    *
+ * GNU General Public License for more details.                     *
+ *                                                                  *
+ * You should have received a copy of the GNU General Public License*
+ * along with this program; if not, contact:                        *
+ *                                                                  *
+ * Free Software Foundation           Voice:  +1-617-542-5942       *
+ * 59 Temple Place - Suite 330        Fax:    +1-617-542-2652       *
+ * Boston, MA  02111-1307,  USA       gnu@gnu.org                   *
+ *                                                                  *
+\********************************************************************/
+
+
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -28,9 +49,12 @@
 #include "xkcp_config.h"
 #include "commandline.h"
 #include "xkcp_client.h"
+#include "xkcp_mon.h"
 #include "debug.h"
 
 IQUEUE_HEAD(xkcp_task_list);
+
+static short mport = 9086;
 
 void
 timer_event_cb(evutil_socket_t fd, short event, void *arg)
@@ -93,8 +117,8 @@ static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, vo
 
 int client_main_loop(void)
 {
-	struct event_base *base;
-	struct evconnlistener *listener;
+	struct event_base *base = NULL;
+	struct evconnlistener *listener = NULL, *mlistener = NULL;
 	int xkcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 	struct event timer_event, *xkcp_event;
 
@@ -130,6 +154,8 @@ int client_main_loop(void)
 	memcpy((char *)&proxy_param.serveraddr.sin_addr.s_addr, (char *)server->h_addr, server->h_length);
 	listener = set_tcp_proxy_listener(base, &proxy_param);
 
+	mlistener = set_xkcp_mon_listener(base, mport, &xkcp_task_list);
+	
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);
 
@@ -137,7 +163,7 @@ int client_main_loop(void)
 	event_add(xkcp_event, NULL);
 
 	event_base_dispatch(base);
-
+	evconnlistener_free(mlistener);
 	evconnlistener_free(listener);
 	close(xkcp_fd);
 	event_base_free(base);
