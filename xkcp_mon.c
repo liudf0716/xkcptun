@@ -93,3 +93,28 @@ void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	bufferevent_setcb(b_in, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, NULL);
 	bufferevent_enable(b_in,  EV_READ | EV_WRITE);
 }
+
+struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, short port)
+{
+	struct sockaddr_in sin;
+	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
+	if (!addr) {
+		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
+		exit(0);
+	}
+
+	memset(&sin, 0, sizeof(sin));
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = inet_addr(addr);
+    sin.sin_port = htons(port);
+
+    struct evconnlistener * listener = evconnlistener_new_bind(base, xkcp_mon_accept_cb, ptr,
+	    LEV_OPT_CLOSE_ON_FREE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_REUSEABLE,
+	    -1, (struct sockaddr*)&sin, sizeof(sin));
+    if (!listener) {
+    	debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
+    	exit(0);
+    }
+
+    return listener;
+}
