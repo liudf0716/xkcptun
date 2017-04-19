@@ -149,13 +149,13 @@ del_task(struct xkcp_task *task) {
 static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;
-    int nret = sendto(ptr->udp_fd, buf, len, 0, (struct sockaddr *)&ptr->serveraddr, sizeof(ptr->serveraddr));
+    int nret = sendto(ptr->xkcpfd, buf, len, 0, (struct sockaddr *)&ptr->sockaddr, sizeof(ptr->sockaddr));
 	if (nret > 0)
     	debug(LOG_DEBUG, "xkcp_output conv [%d] fd [%d] len [%d], send datagram from %d",
-          	kcp->conv, ptr->udp_fd, len, nret);
+          	kcp->conv, ptr->xkcpfd, len, nret);
 	else
 		debug(LOG_INFO, "xkcp_output conv [%d] fd [%d] send datagram error: (%s)",
-          	kcp->conv, ptr->udp_fd, strerror(errno));
+          	kcp->conv, ptr->xkcpfd, strerror(errno));
 	
     return nret;
 }
@@ -177,10 +177,12 @@ static void set_tcp_no_delay(evutil_socket_t fd)
 }
 
 
-void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
+void *xkcp_server_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
 {
+	void *puser = NULL;
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		if (task) {
+			puser = task->kcp->user;
 			debug(LOG_INFO, "tcp_client_event_cb what is [%d] socket [%d]", 
 				  what, bufferevent_getfd(bev));
 			if (task->bev != bev) {
@@ -188,6 +190,7 @@ void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *ta
 				debug(LOG_ERR, "impossible here\n");
 			}
 			ikcp_flush(task->kcp);
+			ikcp_release(task->kcp);
 			del_task(task);
 			free(task);
 		}
@@ -195,6 +198,8 @@ void xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *ta
 	} else if (what & BEV_EVENT_CONNECTED) {
 		set_tcp_no_delay(bufferevent_getfd(bev));
 	}
+	
+	return NULL;
 }
 
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
@@ -324,16 +329,18 @@ set_timer_interval(struct event *timeout)
 	event_add(timeout, &tv);
 }
 
-void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
+void xkcp_update_task_list(iqueue_head *task_list)
 {
 	struct xkcp_task *task;
-	task_list_count = 0;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->kcp) {
-			ikcp_update(task->kcp, iclock());	
-			task_list_count++;
+			ikcp_update(task->kcp, iclock());
 		}
 	}
-	
+}
+
+void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
+{
+	xkcp_update_task_list(task_list);
 	set_timer_interval(timeout);
 }
