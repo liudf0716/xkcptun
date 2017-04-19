@@ -70,7 +70,7 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 	int nrecv = 0;
 	
 	int index = 0;
-	if ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &ptr->serveraddr, &ptr->addr_len)) > 0) {
+	if ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &ptr->sockaddr, &ptr->addr_len)) > 0) {
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp = get_kcp_from_conv(conv, &xkcp_task_list);
 		debug(LOG_DEBUG, "[%d] xkcp_rcv_cb [%d] len [%d] conv [%d] kcp is [%d]", 
