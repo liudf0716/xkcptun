@@ -43,7 +43,6 @@
 void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 {
 	xkcp_tcp_event_cb(bev, what, ctx);
-	xkcp_forward_all_data(get_xkcp_task_list());
 }
 
 void tcp_client_read_cb(struct bufferevent *bev, void *ctx)

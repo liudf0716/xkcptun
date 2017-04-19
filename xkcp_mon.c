@@ -53,6 +53,16 @@ static void xkcp_mon_event_cb(struct bufferevent *bev, short what, void *ctx)
 	}
 }
 
+static void xkcp_mon_write_cb(struct bufferevent *bev, void *ctx)
+{
+	struct evbuffer *output = bufferevent_get_output(bev);
+    if (evbuffer_get_length(output) == 0) {
+		debug(LOG_INFO, "xkcp_mon_write_cb flush");
+        bufferevent_free(bev);
+    }
+
+}
+
 static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx)
 {
 	struct evbuffer *input = bufferevent_get_input(bev);
@@ -65,7 +75,7 @@ static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx)
 		memset(buf, 0, len+1);
 		if (evbuffer_remove(input, buf, len) > 0)
 			process_user_cmd(bev, buf);
-	}
+	} 
 }
 
 void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
@@ -80,6 +90,6 @@ void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	
 	debug(LOG_INFO, "accept new mon client in");
 	
-	bufferevent_setcb(b_in, xkcp_mon_read_cb, NULL, xkcp_mon_event_cb, NULL);
+	bufferevent_setcb(b_in, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, NULL);
 	bufferevent_enable(b_in,  EV_READ | EV_WRITE);
 }

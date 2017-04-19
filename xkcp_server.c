@@ -128,7 +128,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 			}
 			task->bev = bev;
 			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
-			bufferevent_enable(bev, EV_READ|EV_WRITE);
+			bufferevent_enable(bev, EV_READ);
 			if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, 
 												   xkcp_get_param()->remote_addr,
 												   xkcp_get_param()->remote_port) < 0) {
