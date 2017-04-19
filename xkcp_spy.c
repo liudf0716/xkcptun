@@ -81,9 +81,11 @@ int main(int argc, char **argv)
 	struct event_base *base;
   	struct bufferevent *bev;
 	char  	*cmd = NULL, *addr = NULL, *param = NULL;
-	int  	port = 0, opt;
+	int  	port = 0, opt, flag = 1;
 	
 	while((opt = getopt(argc, argv, "h:p:t:m:")) != -1) {
+		flag = 0;
+		
 		switch(opt) {
 		case 'h':
 			addr = strdup(optarg);
@@ -101,6 +103,11 @@ int main(int argc, char **argv)
 			usage();
 			exit(EXIT_FAILURE);
 		}
+	}
+	
+	if (flag) {
+		usage();
+		exit(EXIT_FAILURE);
 	}
 	
 	base = event_base_new();
