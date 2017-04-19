@@ -10,6 +10,7 @@ set(src_xkcp_server
 	tcp_client.c
 	debug.c
 	ikcp.c
+	jwHash.c
 	commandline.c
 	xkcp_util.c
 	xkcp_config.c
