@@ -242,6 +242,59 @@ unlock:
 	return HASHOK;
 }
 
+
+HASHRESULT hash_iterator(jwHashTable *table, process_hash_value_callback process_cb, HASHVALTAG type)
+{
+	int i = 0; 
+	for(; i < xkcp_table->buckets; i++) {
+		jwHashEntry *entry = table->bucket[hash];
+		while(entry) {
+			switch(type) {
+			case HASHPTR:
+				process_cb(entry->value.ptrValue);
+				break;
+			case HASHNUMERIC:
+				process_cb(entry->value.intValue);
+				break;
+			case HASHSTRING:
+				process_cb(entry->value.strValue);
+				break;
+			}
+			
+			// move to next entry
+			entry = entry->next;
+		}
+	}
+	
+	return HASHOK;
+}
+
+HASHRESULT get_ptr_by_str(jwHashTable *table, char *key, void **ptr)
+{
+	// compute hash on key
+	size_t hash = hashString(key) % table->buckets;
+	HASH_DEBUG("adding %s -> %x hash: %ld\n",key,ptr,hash);
+
+	// add entry
+	jwHashEntry *entry = table->bucket[hash];
+	
+	// already an entry
+	HASH_DEBUG("entry: %x\n",entry);
+	while(entry!=0)
+	{
+		HASH_DEBUG("checking entry: %x\n",entry);
+		// check for already indexed
+		if(0==strcmp(entry->key.strValue,key) && ptr==entry->value.ptrValue) {
+			*ptr = entry->value.ptrValue;
+			return HASHOK;
+		}
+		// move to next entry
+		entry = entry->next;
+	}
+	
+	return HASHNOTFOUND;
+}
+
 HASHRESULT add_ptr_by_str( jwHashTable *table, char *key, void *ptr )
 {
 	// compute hash on key
