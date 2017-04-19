@@ -42,6 +42,7 @@
 
 static short port = 9087;
 
+
 static void timeoutcb(evutil_socket_t fd, short what, void *arg)
 {
 	struct event_base *base = arg;
@@ -72,9 +73,9 @@ static void readcb(struct bufferevent *bev, void *ctx)
 	}
 }
 
-static void usage(const char *prog)
+static void usage()
 {
-	printf("%s address cmd [param]\n", prog);
+	printf("xkcp_spy -h address -p port -t cmd [ -m param]\n");
 }
 
 int main(int argc, char **argv)
@@ -83,21 +84,33 @@ int main(int argc, char **argv)
   	struct timeval timeout;
 	struct event_base *base;
   	struct bufferevent *bev;
-	char  *cmd, *addr;
+	char  *cmd = NULL, *addr = NULL, *param = NULL;
+	int  port, opt;
 	
-	if (argc < 3) {
-		usage(argv[0]);
-		return 1;
+	while((opt = getopt(argc, argv, "h:p:t:m:")) != -1) {
+		switch(opt) {
+		case 'h':
+			addr = strdup(optarg);
+			break;
+		case 'p':
+			port = atoi(optarg);
+			break;
+		case 't':
+			cmd = strdup(optarg);
+			break;
+		case 'm':
+			param = strdup(optarg);
+			break;
+		default:
+			usage();
+			exit(EXIT_FAILURE);
+		}
 	}
-	
-	addr 	= argv[1];
-	cmd		= argv[2];
-	printf("addr %s \n", addr);
 	
 	base = event_base_new();
 	if (!base) {
 		puts("Couldn't open event base");
-		return 1;
+		exit(EXIT_FAILURE);
 	}
 	
 	timeout.tv_sec = 2;
@@ -115,9 +128,22 @@ int main(int argc, char **argv)
 		printf("bufferevent_socket_connect failed [%s]", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
+	free(addr);
 	
-	printf("send cmd %s\n", cmd);
-	bufferevent_write(bev, cmd, strlen(cmd));
+	if (!param) {
+		bufferevent_write(bev, cmd, strlen(cmd));
+		free(cmd);
+	} else {
+		int size = strlen(cmd) + strlen(param) + 2;
+		char *input = malloc(size);
+		memset(input, 0, size);
+		snprintf(input, size, "%s %s", cmd, param);
+		bufferevent_write(bev, cmd, strlen(cmd));
+		free(input);
+		free(cmd);
+		free(param);
+	}
+	
 	
 	event_base_dispatch(base);
 	
