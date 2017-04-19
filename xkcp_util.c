@@ -177,7 +177,7 @@ static void set_tcp_no_delay(evutil_socket_t fd)
 }
 
 
-void *xkcp_server_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
+void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
 {
 	void *puser = NULL;
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
