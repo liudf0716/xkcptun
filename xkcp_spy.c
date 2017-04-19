@@ -71,7 +71,7 @@ static void readcb(struct bufferevent *bev, void *ctx)
 
 static void usage()
 {
-	printf("xkcp_spy -h address -p port -t cmd [ -m param]\n");
+	printf("xkcp_spy -h address -s|c -t cmd [ -m param]\n");
 }
 
 int main(int argc, char **argv)
@@ -83,15 +83,18 @@ int main(int argc, char **argv)
 	char  	*cmd = NULL, *addr = NULL, *param = NULL;
 	int  	port = 0, opt, flag = 1;
 	
-	while((opt = getopt(argc, argv, "h:p:t:m:")) != -1) {
+	while((opt = getopt(argc, argv, "h:sct:m:")) != -1) {
 		flag = 0;
 		
 		switch(opt) {
 		case 'h':
 			addr = strdup(optarg);
 			break;
-		case 'p':
-			port = atoi(optarg);
+		case 's':
+			port = 9087;
+			break;
+		case 'c':
+			port = 9086;
 			break;
 		case 't':
 			cmd = strdup(optarg);
