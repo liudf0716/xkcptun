@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=xkcptun
 PKG_VERSION:=0.4.266
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/liudf0716/xkcptun/releases/download/$(PKG_VERSION)/
@@ -40,8 +40,10 @@ endef
 Package/$(PKG_NAME)-server/description = $(Package/$(PKG_NAME)/description)
 
 define Package/$(PKG_NAME)/install
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/xkcp_client $(1)/usr/bin
+	$(INSTALL_DIR) $(1)/usr/bin $(1)/etc/config $(1)/etc/init.d
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/xkcp_client $(1)/usr/bin/xkcptun_client
+	$(INSTALL_CONF) ./files/xkcptun.config $(1)/etc/config/xkcptun
+	$(INSTALL_BIN) ./files/xkcptun_client.init $(1)/etc/init.d/xkcptun_client
 endef
 
 define Package/$(PKG_NAME)-server/install
