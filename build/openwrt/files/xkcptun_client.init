@@ -1,0 +1,123 @@
+#!/bin/sh /etc/rc.common
+#
+# Author: zhangzf
+# Created Time: 2017.04.20
+#
+# This is free software, licensed under the GNU General Public License v3.
+# See /LICENSE for more information.
+#
+
+START=66
+USE_PROCD=1
+
+PROG_NAME="xkcptun_client"
+PROG_DISABLED=0
+PROG_COMMAND=$(which xkcptun_client)
+PROG_CONFIG_FILE="/var/etc/xkcptun-client.json"
+
+bool_to_string() {
+	echo $([ "$1" -eq 1 ] && echo "true" || echo "false")
+}
+
+xkcptun_validate_section() {
+	uci_validate_section xkcptun client "${1}" \
+		'disabled:bool:0' \
+		'localinterface:string' \
+		'localport:uinteger' \
+		'remoteaddr:string' \
+		'remoteport:uinteger' \
+		'key:string' \
+		'crypt:string:none' \
+		'mode:string:fast' \
+		'mtu:uinteger:1350' \
+		'sndwnd:uinteger:1024' \
+		'rcvwnd:uinteger:1024' \
+		'datashard:uinteger:10' \
+		'parityshard:uinteger:3' \
+		'dscp:uinteger:0' \
+		'nocomp:bool:1' \
+		'acknodelay:bool:0' \
+		'nodelay:uinteger:0' \
+		'interval:uinteger:20' \
+		'resend:uinteger:2' \
+		'nc:uinteger:1' \
+		'sockbuf:uinteger:4194304' \
+		'keepalive:uinteger:10'
+}
+
+xkcptun_client() {
+	local localinterface localport remoteaddr remoteport key crypt mode \
+			mtu sndwnd rcvwnd datashard parityshard dscp nocomp acknodelay nodelay \
+			interval resend nc sockbuf keepalive disabled
+
+	xkcptun_validate_section "${1}" || {
+		echo "validation failed"
+		return 1
+	}
+
+	PROG_DISABLED="$disabled"
+
+	[ ! -d "/var/etc/" ] && mkdir -p /var/etc/
+
+	cat <<-EOF >$PROG_CONFIG_FILE
+	{
+	  "localinterface": "$localinterface",
+	  "localport": $localport,
+	  "remoteaddr": "$remoteaddr",
+	  "remoteport": $remoteport,
+	  "key": "$key",
+	  "crypt": "$crypt",
+	  "mode": "$mode",
+	  "mtu": $mtu,
+	  "sndwnd": $sndwnd,
+	  "rcvwnd": $rcvwnd,
+	  "datashard": $datashard,
+	  "parityshard": $parityshard,
+	  "dscp": $dscp,
+	  "nocomp": $(bool_to_string $nocomp),
+	  "acknodelay": $(bool_to_string $acknodelay),
+	  "nodelay": $nodelay,
+	  "interval": $interval,
+	  "resend": $resend,
+	  "nc": $nc,
+	  "sockbuf": $sockbuf,
+	  "keepalive": $keepalive
+	}
+EOF
+}
+
+init_config() {
+	config_load "$PROG_NAME"
+
+	config_foreach xkcptun_client client
+}
+
+reload_service() {
+	init_config
+
+	killall -HUP "$PROG_NAME"
+}
+
+service_triggers() {
+	procd_add_reload_trigger "$PROG_NAME"
+}
+
+start_service() {
+	[ -z "$PROG_COMMAND" ] && {
+		echo "$PROG_NAME commands not found!"
+		return
+	}
+
+	init_config
+
+	[ $PROG_DISABLED -eq 1 ] && return
+
+	procd_open_instance
+	procd_set_param command $PROG_COMMAND -c $PROG_CONFIG_FILE
+	procd_set_param respawn
+	procd_close_instance
+}
+
+stop_service() {
+	killall -HUP "$PROG_NAME"
+}
