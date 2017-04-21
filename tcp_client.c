@@ -46,20 +46,23 @@ static void clean_useless_client()
 {
 	jwHashTable *table = get_xkcp_hash();
 	for(int i = 0; i < table->buckets; i++) {
+		debug(LOG_DEBUG, " index %d clean_useless_client", i);
 		jwHashEntry *entry = table->bucket[i];
 		while(entry) {
 			jwHashEntry *next = entry->next;
 			iqueue_head *list = entry->value.ptrValue;
 			if (list && iqueue_is_empty(list)) {
+				debug(LOG_DEBUG, "3 clean_useless_client");
 				free(entry->value.strValue);
 				free(entry->key.strValue);
-				debug(LOG_DEBUG, "clean_useless_client");
 				free(entry);
 			}
 			// move to next entry
 			entry = next;;
 		}
 	}
+	
+	debug(LOG_DEBUG, "here");
 }
 
 void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)

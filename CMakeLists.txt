@@ -31,7 +31,7 @@ set(libs
 	event
 	json-c)
 
-ADD_DEFINITIONS(-O2 -Wall --std=gnu99 -Wmissing-declarations)
+ADD_DEFINITIONS(-O2 -Wall -g  --std=gnu99 -Wmissing-declarations)
 
 add_executable(xkcp_spy ${src_xkcp_spy})
 target_link_libraries(xkcp_spy ${libs})
