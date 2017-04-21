@@ -94,9 +94,9 @@ static void process_user_cmd(struct bufferevent *bev, const char *cmd, void *ctx
 		spy_cmd = client_cmd;
 	}
 	
-	for(; spy_cmd[i]->command != NULL; i++) {
-		if (strcmp(cmd, spy_cmd[i]->command) == 0) 
-			spy_cmd[i]->cmd_process(bev, ctx);
+	for(; spy_cmd[i].command != NULL; i++) {
+		if (strcmp(cmd, spy_cmd[i].command) == 0) 
+			spy_cmd[i].cmd_process(bev, ctx);
 	}
 	
 }
