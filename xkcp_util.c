@@ -218,7 +218,7 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 static void dump_task(struct xkcp_task *task, struct bufferevent *bev, int index) {
 	struct evbuffer *output = bufferevent_get_output(bev);
 	evbuffer_add_printf(output, 
-			"[%d]\t client [%d]\t conv [%d]:\n --->state [%d] nrcv_buf [%d]" 
+			"[%d]\t connection [%d]\t conv [%d]:\n --->state [%d] nrcv_buf [%d]" 
 			"nsnd_buf [%d] nrcv_que [%d] nsnd_que [%d] rcv_nxt [%d] probe [%d]" 
 			"peek data [%d] stream [%d]\n",
 			index, bufferevent_getfd(task->bev), task->kcp->conv, task->kcp->state, 
