@@ -49,7 +49,7 @@ static void clean_useless_client()
 		jwHashEntry *entry = table->bucket[i];
 		while(entry) {
 			jwHashEntry *next = entry->next
-			iqueue_list *list = entry->value.ptrValue;
+			iqueue_head *list = entry->value.ptrValue;
 			if (list && iqueue_is_empty(list)) {
 				free(entry->value.strValue);
 				free(entry->key.strValue);
