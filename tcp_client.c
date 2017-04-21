@@ -53,6 +53,7 @@ static void clean_useless_client()
 			if (list && iqueue_is_empty(list)) {
 				free(entry->value.strValue);
 				free(entry->key.strValue);
+				debug(LOG_DEBUG, "clean_useless_client");
 				free(entry);
 			}
 			// move to next entry
