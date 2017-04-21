@@ -87,7 +87,7 @@ typedef void (*hashtable_free_item_callback)(void *value);
 
 // Create/delete hash table
 jwHashTable *create_hash( size_t buckets );
-void *delete_hash( jwHashTable *table,  hashtable_free_item_callback cb);		// clean up all memory
+void *delete_hash( jwHashTable *table,  hashtable_free_item_callback free_cb, HASHVALTAG ktype, HASHVALTAG vtype);		// clean up all memory
 
 typedef void (*process_hash_value_callback)(void *value);
 
