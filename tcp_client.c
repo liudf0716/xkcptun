@@ -47,17 +47,20 @@ static void clean_useless_client()
 	jwHashTable *table = get_xkcp_hash();
 	for(int i = 0; i < table->buckets; i++) {
 		jwHashEntry *entry = table->bucket[i];
-		while(entry) {
-			jwHashEntry *next = entry->next;
+		jwHashEntry *previous = NULL;
+		while(entry) {	
 			iqueue_head *list = entry->value.ptrValue;
 			if (list && iqueue_is_empty(list)) {
+				if(!previous)
+					table->bucket[hash] = entry->next;
+				else
+					previous->next = entry->next;
 				free(entry->value.strValue);
 				free(entry->key.strValue);
-				debug(LOG_DEBUG, "clean_useless_client");
 				free(entry);
 			}
-			// move to next entry
-			entry = next;;
+			previous = entry;
+			entry = entry->next;
 		}
 	}
 }
