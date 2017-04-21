@@ -132,11 +132,11 @@ static void accept_client_data(const int xkcpfd, struct event_base *base,
 	
 	iqueue_head *task_list = NULL;
 	snprintf(key, NI_MAXHOST+NI_MAXSERV+1, "%s:%s", host, serv);
-	get_ptr_by_str(xkcp_hash, key, &task_list);
+	;
 	ikcpcb *kcp_server = NULL;
 	int conv = ikcp_getconv(data);
 	debug(LOG_DEBUG, "accept_new_client: [%s:%s] conv [%d] len [%d]", host, serv, conv, len);
-	if (task_list) {
+	if (get_ptr_by_str(xkcp_hash, key, &task_list) == HASHOK) {
 		//old client	
 		ikcpcb *kcp_server = get_kcp_from_conv(conv, task_list);
 		debug(LOG_DEBUG, "old client, kcp_server is %d", kcp_server?1:0);
