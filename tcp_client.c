@@ -37,14 +37,39 @@
 
 #include "xkcp_server.h"
 #include "xkcp_util.h"
-#include "debug.h"
 #include "tcp_client.h"
+#include "debug.h"
+#include "ikcp.h"
+#include "jwHash.h"
+
+static void clean_useless_client()
+{
+	jwHashTable *table = get_xkcp_hash();
+	for(int i = 0; i < table->buckets; i++) {
+		jwHashEntry *entry = table->bucket[i];
+		while(entry) {
+			jwHashEntry *next = entry->next
+			iqueue_list *list = entry->value.ptrValue;
+			if (list && iqueue_is_empty(list)) {
+				free(entry->value.strValue);
+				free(entry->key.strValue);
+				free(entry);
+			}
+			// move to next entry
+			entry = next;;
+		}
+	}
+}
 
 void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 {
 	void *puser = xkcp_tcp_event_cb(bev, what, ctx);
 	if (puser)
 		free(puser);
+	
+	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+		clean_useless_client();
+	}
 }
 
 void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
