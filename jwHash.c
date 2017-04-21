@@ -247,7 +247,7 @@ HASHRESULT hash_iterator(jwHashTable *table, process_hash_value_callback process
 {
 	int i = 0; 
 	for(; i < xkcp_table->buckets; i++) {
-		jwHashEntry *entry = table->bucket[hash];
+		jwHashEntry *entry = table->bucket[i];
 		while(entry) {
 			switch(type) {
 			case HASHPTR:
