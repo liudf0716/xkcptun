@@ -80,7 +80,7 @@ static void get_server_status(struct bufferevent *bev, void *ctx)
 	for(int i = 0; i < xkcp_hash->buckets; i++) {
 		jwHashEntry *entry = xkcp_hash->bucket[i];
 		while (entry) {
-			evbuffer_add_printf(output, "hash_id [%d] client_id [%s]: \n", i, entry->key.strValue);
+			evbuffer_add_printf(output, "hash_id [%d] connected client [%s]: \n", i, entry->key.strValue);
 			dump_task_list(entry->value.ptrValue, bev);
 			entry = entry->next;
 		}
