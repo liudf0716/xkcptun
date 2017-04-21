@@ -199,7 +199,7 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 		set_tcp_no_delay(bufferevent_getfd(bev));
 	}
 	
-	return NULL;
+	return puser;
 }
 
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
