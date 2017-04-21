@@ -89,14 +89,14 @@ static void process_user_cmd(struct bufferevent *bev, const char *cmd, void *ctx
 	int i = 0;
 	struct user_spy_cmd *spy_cmd;
 	if (xkcp_server_flag) {
-		spy_cmd = &server_cmd[i];
+		spy_cmd = server_cmd;
 	} else {
-		spy_cmd = &client_cmd[i];
+		spy_cmd = client_cmd;
 	}
 	
-	for(; spy_cmd->command != NULL; i++) {
-		if (strcmp(cmd, spy_cmd->command) == 0) 
-			spy_cmd->cmd_process(bev, ctx);
+	for(; spy_cmd[i]->command != NULL; i++) {
+		if (strcmp(cmd, spy_cmd[i]->command) == 0) 
+			spy_cmd[i]->cmd_process(bev, ctx);
 	}
 	
 }
