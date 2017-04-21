@@ -5,8 +5,8 @@
 
 int server_main_loop();
 
-typedef struct jwHashTable jwHashTable;
+struct jwHashTable;
 
-jwHashTable * get_xkcp_hash();
+struct jwHashTable * get_xkcp_hash();
 
 #endif
