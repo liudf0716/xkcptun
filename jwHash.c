@@ -246,7 +246,7 @@ unlock:
 HASHRESULT hash_iterator(jwHashTable *table, process_hash_value_callback process_cb, HASHVALTAG type)
 {
 	int i = 0; 
-	for(; i < xkcp_table->buckets; i++) {
+	for(; i < table->buckets; i++) {
 		jwHashEntry *entry = table->bucket[i];
 		while(entry) {
 			switch(type) {
