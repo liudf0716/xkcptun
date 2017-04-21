@@ -108,7 +108,7 @@ static struct xkcp_task *create_new_tcp_connection(const int xkcpfd, struct even
 	add_task_tail(task, task_list);
 	debug(LOG_INFO, "tcp client [%d] connect to [%s]:[%d] success", bufferevent_getfd(bev),
 		  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
-	return kcp_server;
+	return task;
 err:
 	free(param);
 	free(task);
@@ -127,7 +127,7 @@ static void accept_client_data(const int xkcpfd, struct event_base *base,
                     NI_NUMERICHOST | NI_DGRAM);
 	if (nret) {
 		debug(LOG_INFO, "accept_new_client: getnameinfo error %s", strerror(errno));
-		return NULL;
+		return ;
 	}
 	
 	debug(LOG_DEBUG, "accept_new_client: %s:%s", host, serv);
@@ -148,7 +148,7 @@ static void accept_client_data(const int xkcpfd, struct event_base *base,
 		// new client
 		task_list = malloc(sizeof(iqueue_head));
 		iqueue_init(task_list);
-		add_ptr_by_str(xkcp_table, key, task_list);
+		add_ptr_by_str(xkcp_hash, key, task_list);
 		kcp_server = create_new_tcp_connection(xkcpfd, base, from, from_len, conv, task_list);
 	}
 	
@@ -267,7 +267,7 @@ int server_main_loop()
 	
 	int xkcp_fd = set_xkcp_listener();
 	
-	mon_listener = set_xkcp_mon_listener(base, mport, &xkcp_task_list);
+	mon_listener = set_xkcp_mon_listener(base, mport, xkcp_hash);
 		
 	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, base);
 	event_add(xkcp_event, NULL);
