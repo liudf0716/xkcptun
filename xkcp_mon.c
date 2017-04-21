@@ -77,7 +77,7 @@ static void get_server_status(struct bufferevent *bev, void *ctx)
 	jwHashTable *xkcp_hash = ctx;
 	struct evbuffer *output = bufferevent_get_output(bev);
 	for(int i = 0; i < xkcp_hash->buckets; i++) {
-		jwHashEntry *entry = table->bucket[i];
+		jwHashEntry *entry = xkcp_hash->bucket[i];
 		evbuffer_add_printf(output, "[%d] client [%s]: \n", i, entry->key.strValue);
 		dump_task_list(entry->value.ptrValue, bev);
 	}
