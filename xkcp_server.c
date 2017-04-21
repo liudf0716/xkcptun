@@ -285,7 +285,7 @@ int server_main_loop()
 	evconnlistener_free(mon_listener);
 	close(xkcp_fd);
 	event_base_free(base);
-	delete_hash(xkcp_hash, task_free, HASHPTR/*value*/, HASHSTRING/*key*/);
+	delete_hash(xkcp_hash, task_list_free, HASHPTR/*value*/, HASHSTRING/*key*/);
 	
 	return 0;
 }
