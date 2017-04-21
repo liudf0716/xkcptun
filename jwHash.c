@@ -283,7 +283,7 @@ HASHRESULT hash_iterator(jwHashTable *table, process_hash_value_callback process
 				process_cb(entry->value.ptrValue);
 				break;
 			case HASHNUMERIC:
-				process_cb(entry->value.intValue);
+				process_cb(&entry->value.intValue);
 				break;
 			case HASHSTRING:
 				process_cb(entry->value.strValue);
