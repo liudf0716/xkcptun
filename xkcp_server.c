@@ -87,7 +87,7 @@ static struct xkcp_task *create_new_tcp_connection(const int xkcpfd, struct even
 	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 	assert(task);
 	task->kcp = kcp_server;		
-	task->svr_addr = &param->serveraddr;
+	task->sockaddr = &param->sockaddr;
 	
 	struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 	if (!bev) {
@@ -115,14 +115,14 @@ err:
 	return NULL;
 }
 
-static struct xkcp_proxy_param *accept_client_data(const int xkcpfd, struct event_base *base,
+static void accept_client_data(const int xkcpfd, struct event_base *base,
 			struct sockaddr_in *from, int from_len, char *data, int len)
 {
 	char host[NI_MAXHOST] = {0};
     char serv[NI_MAXSERV] = {0};
 	char key[NI_MAXHOST+NI_MAXSERV+1] = {0};
 	
-	int nret = getnameinfo((struct sockaddr *) from, fromlen,
+	int nret = getnameinfo((struct sockaddr *) from, from_len,
                     host, sizeof(host), serv, sizeof(serv),
                     NI_NUMERICHOST | NI_DGRAM);
 	if (nret) {
@@ -130,13 +130,15 @@ static struct xkcp_proxy_param *accept_client_data(const int xkcpfd, struct even
 		return NULL;
 	}
 	
+	debug(LOG_DEBUG, "accept_new_client: %s:%s", host, serv);
+	
 	iqueue_head *task_list = NULL;
 	snprintf(key, NI_MAXHOST+NI_MAXSERV+1, "%s:%s", host, serv);
-	get_ptr_by_str(xkcp_table, key, &task_list);
+	get_ptr_by_str(xkcp_hash, key, &task_list);
 	ikcpcb *kcp_server = NULL;
+	int conv = ikcp_getconv(data);
 	if (task_list) {
-		//old client
-		int conv = ikcp_getconv(buf);
+		//old client	
 		ikcpcb *kcp_server = get_kcp_from_conv(conv, task_list);
 		if (!kcp_server) {
 			// new tcp connection
@@ -171,14 +173,15 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 	char buf[BUF_RECV_LEN] = {0};
 	int len = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr *) &clientaddr, &clientlen);
 	if (len > 0) {
+#if	1
+		accept_client_data(sock, base, &clientaddr, clientlen, buf, len);
+#else
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp_server = get_kcp_from_conv(conv, &xkcp_task_list);
 		debug(LOG_INFO, "xkcp_server: xkcp_rcv_cb -- xkcp sock %d conv is %d, kcp_server is %d, recv data %d", 
 			  sock, conv, kcp_server?1:0, len);
 		if (kcp_server == NULL) {
-#if	1
-			accept_client_data(sock, base, clientaddr, clientlen, buf, len);
-#else
+
 			struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
 			memset(param, 0, sizeof(struct xkcp_proxy_param));
 			memcpy(&param->sockaddr, &clientaddr, clientlen);
