@@ -108,7 +108,7 @@ int main(int argc, char **argv)
 		}
 	}
 	
-	if (flag) {
+	if (flag || (!cmd || !addr || !port)) {
 		usage();
 		exit(EXIT_FAILURE);
 	}
