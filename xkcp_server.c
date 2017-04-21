@@ -250,6 +250,11 @@ static int set_xkcp_listener()
 	return xkcp_fd;
 }
 
+static void task_list_free(iqueue_head *task_list)
+{
+	// delete task_list
+}
+
 int server_main_loop()
 {
 	struct event timer_event, 
@@ -280,7 +285,7 @@ int server_main_loop()
 	evconnlistener_free(mon_listener);
 	close(xkcp_fd);
 	event_base_free(base);
-	delete_hash(xkcp_hash);
+	delete_hash(xkcp_hash, task_free, HASHPTR/*value*/, HASHSTRING/*key*/);
 	
 	return 0;
 }
