@@ -115,12 +115,16 @@ void *delete_hash( jwHashTable *table,  hashtable_free_item_callback free_cb, HA
 			case HASHSTRING:
 				free_cb(entry->value.strValue);
 				break;
+			default:
+				break;
 			}
 			
 			switch(ktype) {
-				case HASHSTRING:
-					free(entry->key.strValue);
-					break;
+			case HASHSTRING:
+				free(entry->key.strValue);
+				break;
+			default:
+				break;
 			}
 			jwHashEntry *next = entry->next;
 			free(entry);
@@ -263,8 +267,8 @@ HASHRESULT add_int_by_str( jwHashTable *table, char *key, long int value )
 	entry->next = table->bucket[hash];
 	table->bucket[hash] = entry;
 	HASH_DEBUG("added entry\n");
-unlock:
 #ifdef HASHTHREADED
+unlock:
 	__sync_synchronize(); // memory barrier
 	table->locks[hash] = 0;
 #endif
