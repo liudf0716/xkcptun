@@ -62,6 +62,8 @@ void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list);
 
 ikcpcb *get_kcp_from_conv(int conv, iqueue_head *task_list);
 
+struct xkcp_task *get_task_from_conv(int conv, iqueue_head *task_list);
+
 int xkcp_main(int argc, char **argv);
 
 #endif
