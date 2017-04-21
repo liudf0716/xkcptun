@@ -24,6 +24,7 @@ limitations under the License.
 // needed for size_t
 #include <stddef.h>
 
+#define HASHDEBUG
 #ifdef HASHDEBUG
 # define HASH_DEBUG(fmt,args...) printf(fmt, ## args)
 #else
