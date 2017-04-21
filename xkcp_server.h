@@ -5,6 +5,8 @@
 
 int server_main_loop();
 
-iqueue_head * get_xkcp_task_list();
+typedef struct jwHashTable jwHashTable;
+
+jwHashTable * get_xkcp_hash();
 
 #endif
