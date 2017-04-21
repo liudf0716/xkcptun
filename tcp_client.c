@@ -52,7 +52,7 @@ static void clean_useless_client()
 			iqueue_head *list = entry->value.ptrValue;
 			if (list && iqueue_is_empty(list)) {
 				if(!previous)
-					table->bucket[hash] = entry->next;
+					table->bucket[i] = entry->next;
 				else
 					previous->next = entry->next;
 				free(entry->value.strValue);
