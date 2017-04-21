@@ -38,13 +38,67 @@
 #include "xkcp_util.h"
 #include "xkcp_config.h"
 #include "debug.h"
+#include "jwHash.h"
+
+static int xkcp_server_flag = 0;
+
+typedef void (*spy_cmd_process)(struct bufferevent *bev, void *ctx);
+
+struct user_spy_cmd {
+	char *command;
+	spy_cmd_process cmd_process;
+};
+
+static void get_client_status(struct bufferevent *bev, void *ctx);
+static void get_server_status(struct bufferevent *bev, void *ctx);
+
+struct user_spy_cmd client_cmd[] = {
+	{"status", get_client_status},
+	{NULL, NULL}
+};
+
+struct user_spy_cmd server_cmd[] = {
+	{"status", get_server_status},
+	{NULL, NULL}
+};
+
+int set_xkcp_server_flag(int flag)
+{
+	xkcp_server_flag = flag;
+}
+
+static void get_client_status(struct bufferevent *bev, void *ctx)
+{
+	dump_task_list(ctx, bev);
+}
+
+static void get_server_status(struct bufferevent *bev, void *ctx)
+{
+	jwHashTable *xkcp_hash = ctx;
+	struct evbuffer *output = bufferevent_get_output(bev);
+	for(int i = 0; i < xkcp_hash->buckets; i++) {
+		jwHashEntry *entry = table->bucket[i];
+		evbuffer_add_printf(output, "client [%s]: \n", entry->key.strValue);
+		dump_task_list(entry->value.ptrValue, bev);
+	}
+}
 
 static void process_user_cmd(struct bufferevent *bev, const char *cmd, void *ctx)
 {
 	debug(LOG_DEBUG, "cmd is %s", cmd);
-	if (strcmp(cmd, "status") == 0) {
-		dump_task_list(ctx, bev);
+	int i = 0;
+	struct user_spy_cmd *spy_cmd;
+	if (xkcp_server_flag) {
+		spy_cmd = &server_cmd[i];
+	} else {
+		spy_cmd = &client_cmd[i];
 	}
+	
+	for(; spy_cmd->command != NULL; i++) {
+		if (strcmp(cmd, spy_cmd->command) == 0) 
+			spy_cmd->cmd_process(bev, ctx);
+	}
+	
 }
 
 static void xkcp_mon_event_cb(struct bufferevent *bev, short what, void *ctx)
