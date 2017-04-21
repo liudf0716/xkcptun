@@ -24,6 +24,7 @@ set(src_xkcp_client
 	commandline.c
 	debug.c
 	ikcp.c
+	jwHash.c
 	xkcp_mon.c)
 
 set(libs
