@@ -27,4 +27,6 @@ void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 
 struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, short port, void *ptr);
 
+int set_xkcp_server_flag(int flag);
+
 #endif
