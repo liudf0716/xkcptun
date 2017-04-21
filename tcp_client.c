@@ -48,7 +48,7 @@ static void clean_useless_client()
 	for(int i = 0; i < table->buckets; i++) {
 		jwHashEntry *entry = table->bucket[i];
 		while(entry) {
-			jwHashEntry *next = entry->next
+			jwHashEntry *next = entry->next;
 			iqueue_head *list = entry->value.ptrValue;
 			if (list && iqueue_is_empty(list)) {
 				free(entry->value.strValue);
