@@ -130,22 +130,23 @@ static void accept_client_data(const int xkcpfd, struct event_base *base,
 		return ;
 	}
 	
-	debug(LOG_DEBUG, "accept_new_client: %s:%s", host, serv);
-	
 	iqueue_head *task_list = NULL;
 	snprintf(key, NI_MAXHOST+NI_MAXSERV+1, "%s:%s", host, serv);
 	get_ptr_by_str(xkcp_hash, key, &task_list);
 	ikcpcb *kcp_server = NULL;
 	int conv = ikcp_getconv(data);
+	debug(LOG_DEBUG, "accept_new_client: [%s:%s] conv [%d] len [%d]", host, serv, conv, len);
 	if (task_list) {
 		//old client	
 		ikcpcb *kcp_server = get_kcp_from_conv(conv, task_list);
+		debug(LOG_DEBUG, "old client, kcp_server is %d", kcp_server?1:0);
 		if (!kcp_server) {
 			// new tcp connection
 			kcp_server = create_new_tcp_connection(xkcpfd, base, from, from_len, conv, task_list);
 		}
 	} else {
 		// new client
+		debug(LOG_DEBUG, "new client");
 		task_list = malloc(sizeof(iqueue_head));
 		iqueue_init(task_list);
 		add_ptr_by_str(xkcp_hash, key, task_list);
