@@ -268,6 +268,16 @@ void xkcp_forward_data(struct xkcp_task *task)
 	}
 }
 
+struct xkcp_task *
+get_task_from_conv(int conv, iqueue_head *task_list)
+{
+	struct xkcp_task *task;
+	iqueue_foreach(task, task_list, xkcp_task_type, head) 
+		if (task->kcp && task->kcp->conv == conv)
+			return task;
+
+	return NULL;
+}
 
 ikcpcb *
 get_kcp_from_conv(int conv, iqueue_head *task_list)
