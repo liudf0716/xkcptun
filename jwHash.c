@@ -102,6 +102,35 @@ jwHashTable *create_hash( size_t buckets )
 	return table;
 }
 
+void *delete_hash( jwHashTable *table,  hashtable_free_item_callback free_cb, HASHVALTAG ktype, HASHVALTAG vtype)
+{
+	int i = 0; 
+	for(; i < table->buckets; i++) {
+		jwHashEntry *entry = table->bucket[i];
+		while(entry) {
+			switch(vtype) {
+			case HASHPTR:
+				free_cb(entry->value.ptrValue);
+				break;
+			case HASHSTRING:
+				free_cb(entry->value.strValue);
+				break;
+			}
+			
+			switch(ktype) {
+				case HASHSTRING:
+					free(entry->key.strValue);
+					break;
+			}
+			jwHashEntry *next = entry->next;
+			free(entry);
+			entry = next;
+		}
+	}
+	
+	free(table->buckets);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ADDING / DELETING / GETTING BY STRING KEY
 
