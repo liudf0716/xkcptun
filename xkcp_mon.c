@@ -86,18 +86,20 @@ static void get_server_status(struct bufferevent *bev, void *ctx)
 static void process_user_cmd(struct bufferevent *bev, const char *cmd, void *ctx)
 {
 	debug(LOG_DEBUG, "cmd is %s", cmd);
-	int i = 0;
-	struct user_spy_cmd *spy_cmd;
+
 	if (xkcp_server_flag) {
-		spy_cmd = server_cmd;
+		for(int i = 0; server_cmd[i].command != NULL; i++) {
+			if (strcmp(cmd, server_cmd[i].command) == 0) 
+				server_cmd[i].cmd_process(bev, ctx);
+		}
 	} else {
-		spy_cmd = client_cmd;
+		for(int i = 0; client_cmd[i].command != NULL; i++) {
+			if (strcmp(cmd, client_cmd[i].command) == 0) 
+				client_cmd[i].cmd_process(bev, ctx);
+		}
 	}
 	
-	for(; spy_cmd[i].command != NULL; i++) {
-		if (strcmp(cmd, spy_cmd[i].command) == 0) 
-			spy_cmd[i].cmd_process(bev, ctx);
-	}
+	
 	
 }
 
