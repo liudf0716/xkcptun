@@ -137,7 +137,7 @@ static void accept_client_data(const int xkcpfd, struct event_base *base,
 	debug(LOG_DEBUG, "accept_new_client: [%s:%s] conv [%d] len [%d]", host, serv, conv, len);
 	if (get_ptr_by_str(xkcp_hash, key, &task_list) == HASHOK) {
 		//old client	
-		task = get_kcp_from_conv(conv, task_list);
+		task = get_task_from_conv(conv, task_list);
 		debug(LOG_DEBUG, "old client, task is %d", task!=NULL?1:0);
 		if (!task) {
 			// new tcp connection
