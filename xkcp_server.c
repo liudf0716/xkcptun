@@ -138,30 +138,32 @@ static void accept_client_data(const int xkcpfd, struct event_base *base,
 	if (get_ptr_by_str(xkcp_hash, key, &task_list) == HASHOK) {
 		//old client	
 		task = get_kcp_from_conv(conv, task_list);
-		debug(LOG_DEBUG, "old client, task is %d", task?1:0);
+		debug(LOG_DEBUG, "old client, task is %d", task!=NULL?1:0);
 		if (!task) {
 			// new tcp connection
 			task = create_new_tcp_connection(xkcpfd, base, from, from_len, conv, task_list);
 		}
 	} else {
 		// new client
-		debug(LOG_DEBUG, "new client");
-		task_list = malloc(sizeof(iqueue_head));
-		iqueue_init(task_list);
+		if (!task_list) {
+			debug(LOG_DEBUG, "new client");
+			task_list = malloc(sizeof(iqueue_head));
+			iqueue_init(task_list);
+		}
 		add_ptr_by_str(xkcp_hash, key, task_list);
 		task = create_new_tcp_connection(xkcpfd, base, from, from_len, conv, task_list);
 	}
 	
-	if (task ) {
+	if (task && task->kcp) {
 		int nret = ikcp_input(task->kcp, data, len);
 		if (nret < 0) {
 			debug(LOG_INFO, "[%d] ikcp_input failed [%d]", task->kcp->conv, nret);
 		}
-		
-		if (task_list) {
-			debug(LOG_DEBUG, "accept_client_data: xkcp_forward_all_data ...");
-			xkcp_forward_all_data(task_list);
-		}
+	}
+	
+	if (task_list) {
+		debug(LOG_DEBUG, "accept_client_data: xkcp_forward_all_data ...");
+		xkcp_forward_all_data(task_list);
 	}
 }
 
