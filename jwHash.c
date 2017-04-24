@@ -316,7 +316,7 @@ HASHRESULT get_ptr_by_str(jwHashTable *table, char *key, void **ptr)
 	{
 		HASH_DEBUG("checking entry: %x\n",entry);
 		// check for already indexed
-		if(0==strcmp(entry->key.strValue,key) && ptr==entry->value.ptrValue) {
+		if(0==strcmp(entry->key.strValue,key)) {
 			*ptr = entry->value.ptrValue;
 			return HASHOK;
 		}
