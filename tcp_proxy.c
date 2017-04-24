@@ -70,13 +70,14 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
 	assert(b_in);
 	
-	debug(LOG_INFO, "accept new client in");
 
 	static int conv = 1;
 	ikcpcb *kcp_client 	= ikcp_create(conv, param);
 	xkcp_set_config_param(kcp_client);
 	conv++;
 	
+	debug(LOG_INFO, "accept new client [%d] in, conv [%d]", fd, conv-1);
+
 	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 	assert(task);
 	task->kcp = kcp_client;
@@ -85,5 +86,5 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	add_task_tail(task, &xkcp_task_list);
 
 	bufferevent_setcb(b_in, tcp_proxy_read_cb, NULL, tcp_proxy_event_cb, task);
-	bufferevent_enable(b_in,  EV_READ | EV_WRITE | EV_PERSIST);
+	bufferevent_enable(b_in,  EV_READ | EV_WRITE );
 }
