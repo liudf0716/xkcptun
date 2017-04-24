@@ -83,7 +83,6 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 		} else {
 			debug(LOG_ERR, "xkcp_rcv_cb -- cant get kcp from peer data!!!!!!");
 		}
-		memset(buf, 0, XKCP_RECV_BUF_LEN);
 		
 		xkcp_forward_all_data( &xkcp_task_list);
 	}
