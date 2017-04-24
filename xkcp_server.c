@@ -177,55 +177,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 	char buf[BUF_RECV_LEN] = {0};
 	int len = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr *) &clientaddr, &clientlen);
 	if (len > 0) {
-#if	1
 		accept_client_data(sock, base, &clientaddr, clientlen, buf, len);
-#else
-		int conv = ikcp_getconv(buf);
-		ikcpcb *kcp_server = get_kcp_from_conv(conv, &xkcp_task_list);
-		debug(LOG_INFO, "xkcp_server: xkcp_rcv_cb -- xkcp sock %d conv is %d, kcp_server is %d, recv data %d", 
-			  sock, conv, kcp_server?1:0, len);
-		if (kcp_server == NULL) {
-
-			struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
-			memset(param, 0, sizeof(struct xkcp_proxy_param));
-			memcpy(&param->sockaddr, &clientaddr, clientlen);
-			param->udp_fd = sock;
-			param->addr_len = clientlen;
-			
-			kcp_server = ikcp_create(conv, param);
-			xkcp_set_config_param(kcp_server);
-
-			struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
-			assert(task);
-			task->kcp = kcp_server;		
-			task->svr_addr = &param->serveraddr;
-			add_task_tail(task, &xkcp_task_list);
-
-			struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-			if (!bev) {
-				debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
-				exit(EXIT_FAILURE);
-			}
-			task->bev = bev;
-			bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
-			bufferevent_enable(bev, EV_READ);
-			if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, 
-												   xkcp_get_param()->remote_addr,
-												   xkcp_get_param()->remote_port) < 0) {
-				bufferevent_free(bev);
-				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
-				exit(EXIT_FAILURE);
-			}
-			debug(LOG_INFO, "tcp client [%d] connect to [%s]:[%d] success", bufferevent_getfd(bev),
-				  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
-		} 
-
-		int nret = ikcp_input(kcp_server, buf, len);
-		if (nret < 0) {
-			debug(LOG_INFO, "[%d] ikcp_input failed [%d]", kcp_server->conv, nret);
-		}
-		xkcp_forward_all_data(&xkcp_task_list);
-#endif
 	}	
 }
 
