@@ -64,13 +64,12 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 {
 	struct xkcp_proxy_param *p = param;
 	struct bufferevent *b_in = NULL;
-	struct event_base *base = p->base;
+	struct event_base *base = evconnlistener_get_base(listener);
 
 	b_in = bufferevent_socket_new(base, fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
 	assert(b_in);
 	
-
 	static int conv = 1;
 	ikcpcb *kcp_client 	= ikcp_create(conv, param);
 	xkcp_set_config_param(kcp_client);
