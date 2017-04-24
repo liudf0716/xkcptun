@@ -273,8 +273,10 @@ get_task_from_conv(int conv, iqueue_head *task_list)
 {
 	struct xkcp_task *task;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) 
-		if (task->kcp && task->kcp->conv == conv)
+		if (task->kcp && task->kcp->conv == conv) {
+			debug(LOG_DEBUG, "get_task_from_conv [%d]", task->kcp->conv);
 			return task;
+		}
 
 	return NULL;
 }
@@ -284,8 +286,9 @@ get_kcp_from_conv(int conv, iqueue_head *task_list)
 {
 	struct xkcp_task *task;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) 
-		if (task->kcp && task->kcp->conv == conv)
+		if (task->kcp && task->kcp->conv == conv) {
 			return task->kcp;
+		}
 
 	return NULL;
 }
