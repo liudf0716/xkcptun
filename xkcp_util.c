@@ -227,6 +227,19 @@ static void dump_task(struct xkcp_task *task, struct bufferevent *bev, int index
 			ikcp_peeksize(task->kcp), task->kcp->stream);
 }
 
+int get_task_list_size(iqueue_head *task_list)
+{
+	struct xkcp_task *task;
+	int num = 0; 
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		if (task->kcp) {
+			num++;
+		}
+	}
+	
+	return num;
+}
+
 void dump_task_list(iqueue_head *task_list, struct bufferevent *bev) {
 	struct xkcp_task *task;
 	task_list_count = 0; 
