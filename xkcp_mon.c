@@ -51,6 +51,7 @@ struct user_spy_cmd {
 
 static void get_client_status(struct bufferevent *bev, void *ctx);
 static void get_server_status(struct bufferevent *bev, void *ctx);
+static void get_client_info(struct bufferevent *bev, void *ctx);
 
 struct user_spy_cmd client_cmd[] = {
 	{"status", get_client_status},
