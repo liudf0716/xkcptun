@@ -1,4 +1,4 @@
-# <img src="logo.png" alt="xkcptun" height="54px" /> 
+# <img src="logo-big.png" alt="xkcptun" height="300px" /> 
 
 [![Build Status][1]][2]  [![Powered][3]][4]
 
