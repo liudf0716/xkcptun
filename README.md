@@ -30,7 +30,11 @@ cmake ..
 make
 
 
-生成xkcp_client和xkcp_server
+生成xkcp_client, xkcp_server, xkcp_spy
+
+#### 参考文档
+
+1, [安装libjson c的问题](https://github.com/liudf0716/xkcptun/wiki/%E5%AE%89%E8%A3%85libjson-c%E7%9A%84%E9%97%AE%E9%A2%98)
 
 ### OpenWrt
 编译及安装请参考 [openwrt-xkcptun](https://github.com/gigibox/openwrt-xkcptun)
@@ -107,9 +111,20 @@ curl http://192.168.199.18:9088
 其执行效果与curl http://192.168.199.18 等同
 
 
+xkcp_spy -h 192.168.199.18 -s -t status
+
+查看服务器端的情况
+
+xkcp_spy -h 192.168.199.18 -c -t status
+
+查看客户端的情况
+
 ### How to contributor(给本项目做贡献)
 
+
 欢迎大家给本项目提供意见和贡献，提供意见的方法可以在本项目的[Issues](https://github.com/liudf0716/xkcptun/issues/new)提，更加欢迎给项目提PULL REQUEST，具体提交PR的方法请参考[CONTRIBUTING](https://github.com/liudf0716/xkcptun/blob/master/CONTRIBUTING.md)
+
+### Star our project
 
 ### Contact me 
 
