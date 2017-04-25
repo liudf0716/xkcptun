@@ -32,6 +32,9 @@ make
 
 生成xkcp_client和xkcp_server
 
+### OpenWrt
+编译及安装请参考 [openwrt-xkcptun](https://github.com/gigibox/openwrt-xkcptun)
+
 ### QuickStart
 
 为方便理解和使用，我们将使用场景放在同一台pc上，pc使用ubuntu系统，我们通过xkcptun来访问本机的http server
