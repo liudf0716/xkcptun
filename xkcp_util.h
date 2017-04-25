@@ -42,6 +42,8 @@ void add_task_tail(struct xkcp_task *task, iqueue_head *head);
 
 void del_task(struct xkcp_task *task);
 
+int get_task_list_size(iqueue_head *task_list);
+
 void dump_task_list(iqueue_head *task_list, struct bufferevent *bev);
 
 void xkcp_set_config_param(ikcpcb *kcp);
