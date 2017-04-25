@@ -1,4 +1,4 @@
-# <img src="logo.png" alt="xkcptun" height="54px" /> 
+# <img src="logo-big.png" alt="xkcptun" height="300px" /> 
 
 [![Build Status][1]][2]  [![Powered][3]][4]
 
@@ -31,6 +31,9 @@ make
 
 
 生成xkcp_client和xkcp_server
+
+### OpenWrt
+编译及安装请参考 [openwrt-xkcptun](https://github.com/gigibox/openwrt-xkcptun)
 
 ### QuickStart
 
