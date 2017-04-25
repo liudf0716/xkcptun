@@ -124,8 +124,10 @@ xkcp_spy -h 192.168.199.18 -c -t status
 
 欢迎大家给本项目提供意见和贡献，提供意见的方法可以在本项目的[Issues](https://github.com/liudf0716/xkcptun/issues/new)提，更加欢迎给项目提PULL REQUEST，具体提交PR的方法请参考[CONTRIBUTING](https://github.com/liudf0716/xkcptun/blob/master/CONTRIBUTING.md)
 
-### Star our project
 
 ### Contact me 
 
 QQ群 ： [331230369](https://jq.qq.com/?_wv=1027&k=47QGEhL)
+
+
+## Please support us, please star our project
