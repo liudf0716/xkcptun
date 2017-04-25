@@ -30,7 +30,7 @@ cmake ..
 make
 
 
-生成xkcp_client和xkcp_server
+生成xkcp_client, xkcp_server, xkcp_spy
 
 ### OpenWrt
 编译及安装请参考 [openwrt-xkcptun](https://github.com/gigibox/openwrt-xkcptun)
@@ -106,6 +106,14 @@ curl http://192.168.199.18:9088
 
 其执行效果与curl http://192.168.199.18 等同
 
+
+xkcp_spy -h 192.168.199.18 -s -t status
+
+查看服务器端的情况
+
+xkcp_spy -h 192.168.199.18 -c -t status
+
+查看客户端的情况
 
 ### How to contributor(给本项目做贡献)
 
