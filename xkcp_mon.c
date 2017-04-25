@@ -83,7 +83,7 @@ static void get_client_info(struct bufferevent *bev, void *ctx)
 		jwHashEntry *entry = xkcp_hash->bucket[i];
 		while (entry) {
 			evbuffer_add_printf(output, "hash_id [%d] connected client [%s] connection [%d] \n", 
-								i, entry->key.strValue, get_task_list_size(entry->key.ptrValue));
+								i, entry->key.strValue, get_task_list_size(entry->value.ptrValue));
 			entry = entry->next;
 		}
 	}
