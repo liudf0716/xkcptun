@@ -59,6 +59,7 @@ struct user_spy_cmd client_cmd[] = {
 
 struct user_spy_cmd server_cmd[] = {
 	{"status", get_server_status},
+	{"client", get_client_info},
 	{NULL, NULL}
 };
 
@@ -72,11 +73,28 @@ static void get_client_status(struct bufferevent *bev, void *ctx)
 	dump_task_list(ctx, bev);
 }
 
+static void get_client_info(struct bufferevent *bev, void *ctx)
+{
+	debug(LOG_DEBUG, "get_client_info  ");
+	jwHashTable *xkcp_hash = ctx;
+	struct evbuffer *output = bufferevent_get_output(bev);
+	evbuffer_add_printf(output, "client list:\n");
+	for(int i = 0; i < xkcp_hash->buckets; i++) {
+		jwHashEntry *entry = xkcp_hash->bucket[i];
+		while (entry) {
+			evbuffer_add_printf(output, "hash_id [%d] connected client [%s] connection [%d] \n", 
+								i, entry->key.strValue, get_task_list_size(entry->key.ptrValue));
+			entry = entry->next;
+		}
+	}
+}
+
 static void get_server_status(struct bufferevent *bev, void *ctx)
 {
 	debug(LOG_DEBUG, "get_server_status  ");
 	jwHashTable *xkcp_hash = ctx;
 	struct evbuffer *output = bufferevent_get_output(bev);
+	evbuffer_add_printf(output, "client detail list:\n");
 	for(int i = 0; i < xkcp_hash->buckets; i++) {
 		jwHashEntry *entry = xkcp_hash->bucket[i];
 		while (entry) {
