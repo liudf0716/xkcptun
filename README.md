@@ -1,4 +1,4 @@
-# <img src="logo-big.png" alt="xkcptun" height="300px" /> 
+![xkcptun](https://github.com/liudf0716/xkcptun/blob/master/logo-big.png)
 
 [![Build Status][1]][2]  [![Powered][3]][4]
 
@@ -35,6 +35,8 @@ make
 #### 参考文档
 
 1, [安装libjson c的问题](https://github.com/liudf0716/xkcptun/wiki/%E5%AE%89%E8%A3%85libjson-c%E7%9A%84%E9%97%AE%E9%A2%98)
+
+2, [bbr vs kcp  优化http下载性能对比报告](https://github.com/liudf0716/xkcptun/wiki/bbr-vs-kcp-%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94%E6%8A%A5%E5%91%8A)
 
 ### OpenWrt
 编译及安装请参考 [openwrt-xkcptun](https://github.com/gigibox/openwrt-xkcptun)
