@@ -92,7 +92,7 @@ parse_commandline(int argc, char **argv)
             break;
 
         case 'v':
-            fprintf(stdout, "This is xkcp version " VERSION "\n");
+           	fprintf(stdout, "This is %s version " VERSION "\n", argv[0]);
             exit(1);
             break;
 				
