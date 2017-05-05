@@ -38,12 +38,12 @@
 /** @internal
  * @brief Print usage
  *
- * Prints usage, called when wifidog is run with -h or with an unknown option
+ * Prints usage
  */
 void
-usage(void)
+usage(const char *appname)
 {
-    fprintf(stdout, "Usage: xkcp_client [options]\n");
+    fprintf(stdout, "Usage: %s [options]\n", appname);
     fprintf(stdout, "\n");
     fprintf(stdout, "options:\n");
     fprintf(stdout, "  -c [filename] Use this config file\n");
@@ -69,7 +69,7 @@ parse_commandline(int argc, char **argv)
         switch (c) {
 
         case 'h':
-            usage();
+            usage(argv[0]);
             exit(1);
             break;
 
@@ -92,12 +92,12 @@ parse_commandline(int argc, char **argv)
             break;
 
         case 'v':
-            fprintf(stdout, "This is xkcp client version " VERSION "\n");
+            fprintf(stdout, "This is xkcp version " VERSION "\n");
             exit(1);
             break;
 				
         default:
-            usage();
+            usage(argv[0]);
             exit(1);
             break;
 
