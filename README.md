@@ -125,7 +125,9 @@ xkcp_spy -h 192.168.199.18 -c -t status
 
 ### Todo
 
-兼容[kcptun](https://github.com/xtaci/kcptun)  <img src="https://github.com/xtaci/kcptun/blob/master/logo-small.png" alt="kcptun" height="24px" /> 
+Compatible with [kcptun](https://github.com/xtaci/kcptun)  <img src="https://github.com/xtaci/kcptun/blob/master/logo-small.png" alt="kcptun" height="24px" /> 
+
+
 
 ### How to contributor(给本项目做贡献)
 
