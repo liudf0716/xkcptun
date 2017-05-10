@@ -36,7 +36,7 @@ make
 
 1, [安装libjson c的问题](https://github.com/liudf0716/xkcptun/wiki/%E5%AE%89%E8%A3%85libjson-c%E7%9A%84%E9%97%AE%E9%A2%98)
 
-2, [bbr vs kcp  优化http下载性能对比报告](https://github.com/liudf0716/xkcptun/wiki/bbr-vs-kcp-%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94%E6%8A%A5%E5%91%8A)
+2, [bbr vs kcp  优化http下载性能对比报告](https://github.com/liudf0716/xkcptun/wiki/bbr-vs-kcp-%E4%BC%98%E5%8C%96http%E4%B8%8B%E8%BD%BD%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94%E6%8A%A5%E5%91%8A)
 
 ### OpenWrt
 编译及安装请参考 [openwrt-xkcptun](https://github.com/gigibox/openwrt-xkcptun)
