@@ -108,6 +108,8 @@ xkcp_server -c server.json -f -d 7
 xkcp_client -c client.json -f -d 7
 
 
+[注] 以上命令都是运行在debug和前台运行模式，正式部署的时候要把 -f 去掉， -d 0 如： xkcp_server -c server.json -d 0
+
 curl http://192.168.199.18:9088
 
 其执行效果与curl http://192.168.199.18 等同
