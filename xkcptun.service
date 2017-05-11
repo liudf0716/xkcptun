@@ -1,0 +1,12 @@
+[Unit]
+Description=C implement of kcptun based on kcp and libevent2
+After=syslog.target network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/bin/xkcp_server -c /etc/xkcptun/server.json -d 2
+ExecReload=/bin/kill -USR2 $MAINPID
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
