@@ -75,7 +75,7 @@ _debug(const char *filename, int line, int level, const char *format, ...)
         }
 
         if (debugconf.log_syslog) {
-            openlog("wifidog", LOG_PID, debugconf.syslog_facility);
+            openlog("xkcptun", LOG_PID, debugconf.syslog_facility);
             va_start(vlist, format);
             vsyslog(level, format, vlist);
             va_end(vlist);
