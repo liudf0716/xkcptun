@@ -49,6 +49,7 @@ usage(const char *appname)
     fprintf(stdout, "  -c [filename] Use this config file\n");
     fprintf(stdout, "  -f            Run in foreground\n");
     fprintf(stdout, "  -d <level>    Debug level\n");
+    fprintf(stdout, "  -s            Log to syslog\n");
     fprintf(stdout, "  -h            Print usage\n");
     fprintf(stdout, "  -v            Print version information\n");
     fprintf(stdout, "\n");
@@ -89,6 +90,11 @@ parse_commandline(int argc, char **argv)
             if (optarg) {
                 debugconf.debuglevel = atoi(optarg);
             }
+            break;
+
+        case 's':
+            debugconf.log_syslog = 1;
+            debugconf.log_stderr = 0;
             break;
 
         case 'v':
