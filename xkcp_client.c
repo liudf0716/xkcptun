@@ -68,12 +68,12 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 	struct xkcp_proxy_param  *ptr = arg;
 	char buf[XKCP_RECV_BUF_LEN] = {0};
 	int nrecv = 0;
-	
+
 	int index = 0;
 	if ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &ptr->sockaddr, &ptr->addr_len)) > 0) {
 		int conv = ikcp_getconv(buf);
 		ikcpcb *kcp = get_kcp_from_conv(conv, &xkcp_task_list);
-		debug(LOG_DEBUG, "[%d] xkcp_rcv_cb [%d] len [%d] conv [%d] kcp is [%d]", 
+		debug(LOG_DEBUG, "[%d] xkcp_rcv_cb [%d] len [%d] conv [%d] kcp is [%d]",
 			  index++, sock, nrecv, conv, kcp?1:0);
 		if (kcp) {
 			int nret = ikcp_input(kcp, buf, nrecv);
@@ -83,7 +83,7 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 		} else {
 			debug(LOG_ERR, "xkcp_rcv_cb -- cant get kcp from peer data!!!!!!");
 		}
-		
+
 		xkcp_forward_all_data( &xkcp_task_list);
 	}
 }
@@ -99,19 +99,19 @@ static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, vo
 	}
 
 	memset(&sin, 0, sizeof(sin));
-    sin.sin_family = AF_INET;
-    sin.sin_addr.s_addr = inet_addr(addr);
-    sin.sin_port = htons(lport);
+	sin.sin_family = AF_INET;
+	sin.sin_addr.s_addr = inet_addr(addr);
+	sin.sin_port = htons(lport);
 
-    struct evconnlistener * listener = evconnlistener_new_bind(base, tcp_proxy_accept_cb, ptr,
-	    LEV_OPT_CLOSE_ON_FREE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_REUSEABLE,
-	    -1, (struct sockaddr*)&sin, sizeof(sin));
-    if (!listener) {
-    	debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
-    	exit(0);
-    }
+	struct evconnlistener * listener = evconnlistener_new_bind(base, tcp_proxy_accept_cb, ptr,
+		LEV_OPT_CLOSE_ON_FREE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_REUSEABLE,
+		-1, (struct sockaddr*)&sin, sizeof(sin));
+	if (!listener) {
+		debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
+		exit(0);
+	}
 
-    return listener;
+	return listener;
 }
 
 int client_main_loop(void)
@@ -125,13 +125,13 @@ int client_main_loop(void)
 		debug(LOG_ERR, "ERROR, open udp socket");
 		exit(0);
 	}
-	
+
 	if (fcntl(xkcp_fd, F_SETFL, O_NONBLOCK) == -1) {
 		debug(LOG_ERR, "ERROR, fcntl error: %s", strerror(errno));
 		exit(0);
 	}
-	
-	
+
+
 	struct hostent *server = gethostbyname(xkcp_get_param()->remote_addr);
 	if (!server) {
 		debug(LOG_ERR, "ERROR, no such host as %s", xkcp_get_param()->remote_addr);
@@ -142,7 +142,7 @@ int client_main_loop(void)
 	if (!base) {
 		debug(LOG_ERR, "event_base_new()");
 		exit(0);
-	}	
+	}
 
 	struct xkcp_proxy_param  proxy_param;
 	memset(&proxy_param, 0, sizeof(proxy_param));
@@ -154,7 +154,7 @@ int client_main_loop(void)
 	listener = set_tcp_proxy_listener(base, &proxy_param);
 
 	mlistener = set_xkcp_mon_listener(base, mport, &xkcp_task_list);
-	
+
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);
 
@@ -170,10 +170,10 @@ int client_main_loop(void)
 	return 0;
 }
 
-int main(int argc, char **argv) 
+int main(int argc, char **argv)
 {
 	struct xkcp_config *config = xkcp_get_config();
 	config->main_loop = client_main_loop;
-	
+
 	return xkcp_main(argc, argv);
 }

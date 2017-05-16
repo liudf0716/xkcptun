@@ -36,7 +36,7 @@ struct xkcp_param {
 	int		mtu;			// mtu
 	int		sndwnd;			// sndwnd
 	int		rcvwnd;			// rcvwnd
-	int		data_shard;		// datashard	 
+	int		data_shard;		// datashard
 	int		parity_shard;  	// parityshard
 	int		dscp;			// dscp
 	int 	nocomp; 		// nocomp
@@ -51,16 +51,18 @@ struct xkcp_param {
 
 struct xkcp_config {
 	char 	*config_file;
-	int 	daemon;  
+	int 	daemon;
 	int		is_server;
 	int		(*main_loop)();
-	
+
 	struct xkcp_param param;
 };
 
 void config_init(void);
 
 struct xkcp_config *xkcp_get_config(void);
+
+int xkcp_param_validate(struct xkcp_param * param);
 
 int xkcp_parse_param(const char *filename);
 
