@@ -48,7 +48,7 @@ static void clean_useless_client()
 	for(int i = 0; i < table->buckets; i++) {
 		jwHashEntry *entry = table->bucket[i];
 		jwHashEntry *previous = NULL;
-		while(entry) {	
+		while(entry) {
 			iqueue_head *list = entry->value.ptrValue;
 			if (list && iqueue_is_empty(list)) {
 				if(!previous)
@@ -70,7 +70,7 @@ void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 	void *puser = xkcp_tcp_event_cb(bev, what, ctx);
 	if (puser)
 		free(puser);
-	
+
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		clean_useless_client();
 	}
