@@ -4,6 +4,7 @@
 [![Powered][3]][4]
 [![license][5]][6]
 [![PRs Welcome][7]][8]
+[![Issue Welcome][9]][10]
 
 [1]: https://travis-ci.org/liudf0716/xkcptun.svg?branch=master
 [2]: https://travis-ci.org/liudf0716/xkcptun
@@ -13,6 +14,8 @@
 [6]: https://github.com/KunTengRom/xfrp/blob/master/LICENSE
 [7]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=plastic
 [8]: https://github.com/liudf0716/xkcptun/pulls
+[9]: https://img.shields.io/badge/Issues-welcome-brightgreen.svg?style=plastic
+[10]: https://github.com/liudf0716/xkcptung/issues/new
 
 # xkcptun 基于kcp和libevent2库，用c语言实现的kcptun
 
