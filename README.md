@@ -1,11 +1,18 @@
 ![xkcptun](https://github.com/liudf0716/xkcptun/blob/master/logo-big.png)
 
-[![Build Status][1]][2]  [![Powered][3]][4]
+[![Build Status][1]][2] 
+[![Powered][3]][4]
+[![license][5]][6]
+[![PRs Welcome][7]][8]
 
 [1]: https://travis-ci.org/liudf0716/xkcptun.svg?branch=master
 [2]: https://travis-ci.org/liudf0716/xkcptun
-[3]: https://img.shields.io/badge/KCP-Powered-blue.svg
+[3]: https://img.shields.io/badge/KCP-Powered-blue.svg?style=plastic
 [4]: https://github.com/skywind3000/kcp
+[5]: https://img.shields.io/badge/license-GPLV3-brightgreen.svg?style=plastic
+[6]: https://github.com/KunTengRom/xfrp/blob/master/LICENSE
+[7]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=plastic
+[8]: https://github.com/liudf0716/xkcptun/pulls
 
 # xkcptun 基于kcp和libevent2库，用c语言实现的kcptun
 
