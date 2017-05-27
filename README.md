@@ -41,7 +41,7 @@ cd xkcptun
 
 mkdir build && cd build
 
-cmake ..
+cmake .. (camke -DBUILD_STATIC_LINK=yes .. //静态链接)
 
 make
 
