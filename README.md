@@ -6,6 +6,7 @@
 [![PRs Welcome][7]][8]
 [![Issue Welcome][9]][10]
 [![OpenWRT][11]][12]
+[![KunTeng][13]][14]
 
 [1]: https://travis-ci.org/liudf0716/xkcptun.svg?branch=master
 [2]: https://travis-ci.org/liudf0716/xkcptun
@@ -19,6 +20,8 @@
 [10]: https://github.com/liudf0716/xkcptung/issues/new
 [11]: https://img.shields.io/badge/Platform-%20OpenWRT%20%7CLEDE%20%7CCentOS%20-brightgreen.svg?style=plastic
 [12]: https://github.com/gigibox/openwrt-xkcptun
+[13]: https://img.shields.io/badge/KunTeng-Inside-blue.svg?style=plastic
+[14]: http://rom.kunteng.org
 
 # xkcptun 基于kcp和libevent2库，用c语言实现的kcptun
 
