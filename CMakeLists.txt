@@ -31,16 +31,20 @@ set(libs
 	event
 	json-c)
 
-ADD_DEFINITIONS(-Wall -g  --std=gnu99 -Wmissing-declarations)
+ADD_DEFINITIONS(-Wall -g --std=gnu99 -Wmissing-declarations)
+
+if(DEFINED BUILD_STATIC_LINK)
+	set(link_flag -static)
+endif()
 
 add_executable(xkcp_spy ${src_xkcp_spy})
-target_link_libraries(xkcp_spy ${libs})
+target_link_libraries(xkcp_spy ${link_flag} ${libs})
 
 add_executable(xkcp_client ${src_xkcp_client})
-target_link_libraries(xkcp_client ${libs})
+target_link_libraries(xkcp_client ${link_flag} ${libs})
 
 add_executable(xkcp_server ${src_xkcp_server})
-target_link_libraries(xkcp_server ${libs})
+target_link_libraries(xkcp_server ${link_flag} ${libs})
 
 install(TARGETS xkcp_client xkcp_server
         RUNTIME DESTINATION bin
