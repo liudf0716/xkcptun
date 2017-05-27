@@ -8,7 +8,7 @@
 [![OpenWRT][11]][12]
 [![KunTeng][13]][14]
 
-[1]: https://travis-ci.org/liudf0716/xkcptun.svg?branch=master
+[1]: https://img.shields.io/travis/liudf0716/xkcptun.svg?style=plastic
 [2]: https://travis-ci.org/liudf0716/xkcptun
 [3]: https://img.shields.io/badge/KCP-Powered-blue.svg?style=plastic
 [4]: https://github.com/skywind3000/kcp
