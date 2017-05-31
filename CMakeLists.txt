@@ -31,7 +31,7 @@ set(libs
 	event
 	json-c)
 
-ADD_DEFINITIONS(-Wall -g --std=gnu99 -Wmissing-declarations)
+ADD_DEFINITIONS(-Wall -O2 --std=gnu99 -Wmissing-declarations)
 
 if(DEFINED BUILD_STATIC_LINK)
 	set(link_flag -static)
