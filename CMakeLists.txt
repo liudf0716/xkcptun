@@ -33,9 +33,6 @@ set(libs
 
 ADD_DEFINITIONS(-Wall -O2 --std=gnu99 -Wmissing-declarations)
 
-if(DEFINED BUILD_STATIC_LINK)
-	set(link_flag -static)
-endif()
 
 add_executable(xkcp_spy ${src_xkcp_spy})
 target_link_libraries(xkcp_spy ${link_flag} ${libs})
