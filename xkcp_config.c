@@ -100,7 +100,7 @@ static int parse_json_int(const json_value *value)
 	} else if (value->type == json_boolean) {
 		return value->u.boolean;
 	} else {
-		debug(LOG_ERR, "%d", value->type);
+		debug(LOG_ERR, "Need type :%d or %d, now get wrong type: %d", json_integer, json_boolean, value->type);
 		debug(LOG_ERR, "Invalid config format.");
 	}
 	return 0;
@@ -113,7 +113,7 @@ static char * parse_json_string(const json_value *value)
 	} else if (value->type == json_null) {
 		return NULL;
 	} else {
-		debug(LOG_ERR, "%d", value->type);
+		debug(LOG_ERR, "Need type :%d or %d, now get wrong type: %d", json_string, json_null, value->type);
 		debug(LOG_ERR, "Invalid config format.");
 	}
 	return 0;
