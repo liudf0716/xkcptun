@@ -67,7 +67,7 @@ jwHashTable * get_xkcp_hash()
 
 static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
-	hash_iterator(xkcp_hash, xkcp_update_task_list, HASHPTR);
+	hash_iterator(xkcp_hash, (void*)xkcp_update_task_list, HASHPTR);
 	
 	set_timer_interval(arg);
 }
@@ -135,7 +135,7 @@ static void accept_client_data(const int xkcpfd, struct event_base *base,
 	struct xkcp_task *task = NULL;
 	int conv = ikcp_getconv(data);
 	debug(LOG_DEBUG, "accept_new_client: [%s:%s] conv [%d] len [%d]", host, serv, conv, len);
-	if (get_ptr_by_str(xkcp_hash, key, &task_list) == HASHOK) {
+	if (get_ptr_by_str(xkcp_hash, key, (void*)&task_list) == HASHOK) {
 		//old client	
 		task = get_task_from_conv(conv, task_list);
 		debug(LOG_DEBUG, "old client, task is %d", task!=NULL?1:0);
@@ -175,7 +175,7 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 	memset(&clientaddr, 0, clientlen);
 	
 	char buf[BUF_RECV_LEN] = {0};
-	int len = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr *) &clientaddr, &clientlen);
+	int len = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr *) &clientaddr, (socklen_t*)&clientlen);
 	if (len > 0) {
 		accept_client_data(sock, base, &clientaddr, clientlen, buf, len);
 	}	
@@ -242,7 +242,7 @@ int server_main_loop()
 	evconnlistener_free(mon_listener);
 	close(xkcp_fd);
 	event_base_free(base);
-	delete_hash(xkcp_hash, task_list_free, HASHPTR/*value*/, HASHSTRING/*key*/);
+	delete_hash(xkcp_hash, (void*)task_list_free, HASHPTR/*value*/, HASHSTRING/*key*/);
 	
 	return 0;
 }

@@ -50,7 +50,7 @@ static inline long int hashString(char * str)
 	unsigned long hash = 5381;
 	int c;
 
-	while (c = *str++)
+	while ((c = *str++))
 		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
 	return hash;
 }
@@ -102,7 +102,7 @@ jwHashTable *create_hash( size_t buckets )
 	return table;
 }
 
-void *delete_hash( jwHashTable *table,  hashtable_free_item_callback free_cb, HASHVALTAG ktype, HASHVALTAG vtype)
+void delete_hash( jwHashTable *table,  hashtable_free_item_callback free_cb, HASHVALTAG ktype, HASHVALTAG vtype)
 {
 	int i = 0; 
 	for(; i < table->buckets; i++) {
@@ -132,7 +132,7 @@ void *delete_hash( jwHashTable *table,  hashtable_free_item_callback free_cb, HA
 		}
 	}
 	
-	free(table->buckets);
+	free(table->bucket);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

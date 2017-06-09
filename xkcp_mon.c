@@ -67,6 +67,7 @@ struct user_spy_cmd server_cmd[] = {
 int set_xkcp_server_flag(int flag)
 {
 	xkcp_server_flag = flag;
+    return 0;
 }
 
 static void get_client_status(struct bufferevent *bev, void *ctx)
