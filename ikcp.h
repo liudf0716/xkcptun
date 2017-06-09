@@ -325,6 +325,7 @@ extern "C" {
 #endif
 
 const char *ikcp_decode32u(const char *p, IUINT32 *l);
+typedef struct IKCPSEG IKCPSEG;
 
 //---------------------------------------------------------------------
 // interface
@@ -394,6 +395,9 @@ void ikcp_log(ikcpcb *kcp, int mask, const char *fmt, ...);
 
 // setup allocator
 void ikcp_allocator(void* (*new_malloc)(size_t), void (*new_free)(void*));
+void ikcp_qprint(const char *name, const struct IQUEUEHEAD *head);
+void ikcp_parse_data(ikcpcb *kcp, IKCPSEG *newseg);
+int ikcp_interval(ikcpcb *kcp, int interval);
 
 // read conv
 IUINT32 ikcp_getconv(const void *ptr);

@@ -73,7 +73,8 @@ void config_init()
 	xkcp_param_init(&config.param);
 }
 
-static void xkcp_param_free(struct xkcp_param *param)
+#if 0
+void xkcp_param_free(struct xkcp_param *param)
 {
 	if (param->local_interface)
 		free(param->local_interface);
@@ -90,6 +91,7 @@ static void xkcp_param_free(struct xkcp_param *param)
 	if (param->mode)
 		free(param->mode);
 }
+#endif
 
 static int parse_json_int(const json_value *value)
 {
