@@ -14,6 +14,7 @@ set(src_xkcp_server
 	commandline.c
 	xkcp_util.c
 	xkcp_config.c
+    json.c
 	xkcp_mon.c)
 	
 set(src_xkcp_client
@@ -25,11 +26,12 @@ set(src_xkcp_client
 	debug.c
 	ikcp.c
 	jwHash.c
+	json.c
 	xkcp_mon.c)
 
 set(libs
-	event
-	json-c)
+    m
+	event)
 
 ADD_DEFINITIONS(-Wall -O2 --std=gnu99 -Wmissing-declarations)
 
