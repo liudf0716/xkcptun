@@ -140,7 +140,6 @@ static inline long _itimediff(IUINT32 later, IUINT32 earlier)
 //---------------------------------------------------------------------
 // manage segment
 //---------------------------------------------------------------------
-typedef struct IKCPSEG IKCPSEG;
 
 static void* (*ikcp_malloc_hook)(size_t) = NULL;
 static void (*ikcp_free_hook)(void *) = NULL;
