@@ -53,6 +53,7 @@ static struct option long_options[] = {
 	{ "nc",			required_argument,	NULL, GETOPT_VAL_NC},
 	{ "sockbuf",	required_argument,	NULL, GETOPT_VAL_SOCKBUF},
 	{ "keepalive",	required_argument,	NULL, GETOPT_VAL_KEEPALIVE},
+	{ "syslog",		no_argument,		NULL, GETOPT_VAL_SYSLOG},
 	{ "help",		no_argument,		NULL, GETOPT_VAL_HELP},
 	{ "version",	no_argument,		NULL, GETOPT_VAL_VERSION},
 	{ NULL,			0,					NULL, 0 }
@@ -73,7 +74,8 @@ usage(const char *appname)
 	fprintf(stdout, "  -f                Run in foreground\n");
 	fprintf(stdout, "  -h --help         Print usage\n");
 	fprintf(stdout, "  -v --version      Print version information\n");
-	fprintf(stdout, "  -d <level>        Debug level\n\n");
+	fprintf(stdout, "  -d <level>        Debug level\n");
+	fprintf(stdout, "  --syslog          Log to syslog\n\n");
 
 	fprintf(stdout, "  -i <interface>    Interface to use (default br-lan)\n");
 	fprintf(stdout, "  -l <port>         Port number of your local server (default: 9088)\n");
@@ -213,6 +215,11 @@ parse_commandline(int argc, char **argv)
 
 		case GETOPT_VAL_KEEPALIVE:
 			param->keepalive = atoi(optarg);
+			break;
+
+		case GETOPT_VAL_SYSLOG:
+			debugconf.log_syslog = 1;
+			debugconf.log_stderr = 0;
 			break;
 
 		case GETOPT_VAL_VERSION:
