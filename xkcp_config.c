@@ -23,8 +23,8 @@
 #include <stdlib.h>
 
 #include <syslog.h>
-#include <json-c/json.h>
 
+#include "json.h"
 #include "debug.h"
 #include "xkcp_config.h"
 
@@ -91,6 +91,32 @@ static void xkcp_param_free(struct xkcp_param *param)
 		free(param->mode);
 }
 
+static int parse_json_int(const json_value *value)
+{
+	if (value->type == json_integer) {
+		return value->u.integer;
+	} else if (value->type == json_boolean) {
+		return value->u.boolean;
+	} else {
+		debug(LOG_ERR, "%d", value->type);
+		debug(LOG_ERR, "Invalid config format.");
+	}
+	return 0;
+}
+
+static char * parse_json_string(const json_value *value)
+{
+	if (value->type == json_string) {
+		return strdup(value->u.string.ptr);
+	} else if (value->type == json_null) {
+		return NULL;
+	} else {
+		debug(LOG_ERR, "%d", value->type);
+		debug(LOG_ERR, "Invalid config format.");
+	}
+	return 0;
+}
+
 int xkcp_parse_param(const char *filename)
 {
 	return xkcp_parse_json_param(&config.param, filename);
@@ -102,130 +128,107 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 	if (!param)
 		return 1;
 
-	int nret = 0;
-	struct json_object *json_config = json_object_from_file(filename);
-	if (!json_config || !json_object_is_type(json_config, json_type_object)) {
-		debug(LOG_ERR, "json_object_from_file [%s] failed", filename);
+	char * buf;
+	json_value *obj;
+
+	FILE *f = fopen(filename, "rb");
+	if (f == NULL) {
+		debug(LOG_ERR, "Invalid config path.");
 		return 1;
 	}
 
-	struct json_object *j_obj = NULL;
-	if (json_object_object_get_ex(json_config, "localinterface", &j_obj)) {
-		param->local_interface = strdup(json_object_get_string(j_obj));
-	} else
-		param->local_interface = strdup("br-lan");
-	debug(LOG_DEBUG, "local_interface is %s", param->local_interface);
+	fseek(f, 0, SEEK_END);
+	long pos = ftell(f);
+	fseek(f, 0, SEEK_SET);
 
-	if (json_object_object_get_ex(json_config, "localport", &j_obj)) {
-		param->local_port = json_object_get_int(j_obj);
-	} else
-		param->local_port = 9088;
-	debug(LOG_DEBUG, "local_port is %d", param->local_port);
-
-	if (json_object_object_get_ex(json_config, "remoteaddr", &j_obj)) {
-		param->remote_addr = strdup(json_object_get_string(j_obj));
-		debug(LOG_DEBUG, "remote_addr is %s", param->remote_addr);
+	buf = malloc(pos + 1);
+	if (buf == NULL) {
+		debug(LOG_ERR, "No enough memory.");
+		return 1;
 	}
 
-	if (json_object_object_get_ex(json_config, "remoteport", &j_obj)) {
-		param->remote_port = json_object_get_int(j_obj);
-	} else
-		param->remote_port = 9089;
+	int nread = fread(buf, pos, 1, f);
+	if (!nread) {
+		debug(LOG_ERR, "Failed to read the config file.");
+		return 1;
+	}
+	fclose(f);
 
-	debug(LOG_DEBUG, "remote_port is %d", param->remote_port);
+	buf[pos] = '\0'; // end of string
 
-	if (json_object_object_get_ex(json_config, "key", &j_obj)) {
-		param->key = strdup(json_object_get_string(j_obj));
+	json_settings settings = { 0UL, 0, NULL, NULL, NULL };
+	char error_buf[512];
+	obj = json_parse_ex(&settings, buf, pos, error_buf);
+
+	if (obj == NULL) {
+		debug(LOG_ERR, "%s", error_buf);
+		return 1;
 	}
 
-	if (json_object_object_get_ex(json_config, "crypt", &j_obj)) {
-		param->crypt = strdup(json_object_get_string(j_obj));
+	if (obj->type == json_object) {
+		unsigned int i;
+		for (i = 0; i < obj->u.object.length; i++) {
+			char *name		= obj->u.object.values[i].name;
+			json_value *value = obj->u.object.values[i].value;
+			if (strcmp(name, "localinterface") == 0) {
+				param->local_interface = parse_json_string(value);
+				debug(LOG_DEBUG, "local_interface is %s", param->local_interface);
+			} else if (strcmp(name, "localport") == 0) {
+				param->local_port = parse_json_int(value);;
+				debug(LOG_DEBUG, "local_port is %d", param->local_port);
+			} else if (strcmp(name, "remoteaddr") == 0) {
+				param->remote_addr = parse_json_string(value);
+				debug(LOG_DEBUG, "remote_addr is %s", param->remote_addr);
+			} else if (strcmp(name, "remoteport") == 0) {
+				param->remote_port = parse_json_int(value);;
+				debug(LOG_DEBUG, "remote_port is %d", param->remote_port);
+			} else if (strcmp(name, "key") == 0) {
+				param->key = parse_json_string(value);
+			} else if (strcmp(name, "crypt") == 0) {
+				param->crypt = parse_json_string(value);
+			} else if (strcmp(name, "mode") == 0) {
+				param->mode = parse_json_string(value);
+			} else if (strcmp(name, "conn") == 0) {
+				param->conn = parse_json_int(value);;
+			} else if (strcmp(name, "autoexpire") == 0) {
+				param->auto_expire = parse_json_int(value);;
+			} else if (strcmp(name, "scavengettl") == 0) {
+				param->scavenge_ttl = parse_json_int(value);;
+			} else if (strcmp(name, "mtu") == 0) {
+				param->mtu = parse_json_int(value);;
+			} else if (strcmp(name, "sndwnd") == 0) {
+				param->sndwnd = parse_json_int(value);;
+			} else if (strcmp(name, "rcvwnd") == 0) {
+				param->rcvwnd = parse_json_int(value);;
+			} else if (strcmp(name, "datashard") == 0) {
+				param->data_shard = parse_json_int(value);;
+			} else if (strcmp(name, "parity_shard") == 0) {
+				param->parity_shard = parse_json_int(value);;
+			} else if (strcmp(name, "dscp") == 0) {
+				param->dscp = parse_json_int(value);;
+			} else if (strcmp(name, "nocomp") == 0) {
+				param->nocomp = parse_json_int(value);;
+			} else if (strcmp(name, "acknodelay") == 0) {
+				param->ack_nodelay = parse_json_int(value);;
+			} else if (strcmp(name, "nodelay") == 0) {
+				param->nodelay = parse_json_int(value);;
+			} else if (strcmp(name, "interval") == 0) {
+				param->interval = parse_json_int(value);;
+			} else if (strcmp(name, "resend") == 0) {
+				param->resend = parse_json_int(value);;
+			} else if (strcmp(name, "nc") == 0) {
+				param->nc = parse_json_int(value);;
+			} else if (strcmp(name, "keepalive") == 0) {
+				param->keepalive = parse_json_int(value);;
+			}
+		}
+	} else {
+		debug(LOG_DEBUG, "Invalid config file");
+		return 1;
 	}
 
-	if (json_object_object_get_ex(json_config, "mode", &j_obj)) {
-		param->mode = strdup(json_object_get_string(j_obj));
-	}
+	free(buf);
+	json_value_free(obj);
 
-	if (json_object_object_get_ex(json_config, "conn", &j_obj)) {
-		param->conn = json_object_get_int(j_obj);
-	}
-
-	if (json_object_object_get_ex(json_config, "autoexpire", &j_obj)) {
-		param->auto_expire = json_object_get_int(j_obj);
-	}
-
-	if (json_object_object_get_ex(json_config, "scavengettl", &j_obj)) {
-		param->scavenge_ttl = json_object_get_int(j_obj);
-	}
-
-	if (json_object_object_get_ex(json_config, "mtu", &j_obj)) {
-		param->mtu = json_object_get_int(j_obj);
-		debug(LOG_DEBUG, "mtu is %d", param->mtu);
-	}
-
-
-	if (json_object_object_get_ex(json_config, "sndwnd", &j_obj)) {
-		param->sndwnd = json_object_get_int(j_obj);
-		debug(LOG_DEBUG, "sndwnd is %d", param->sndwnd);
-	}
-
-
-	if (json_object_object_get_ex(json_config, "rcvwnd", &j_obj)) {
-		param->rcvwnd = json_object_get_int(j_obj);
-		debug(LOG_DEBUG, "rcvwnd is %d", param->rcvwnd);
-	}
-
-	if (json_object_object_get_ex(json_config, "datashard", &j_obj)) {
-		param->data_shard = json_object_get_int(j_obj);
-	}
-
-	if (json_object_object_get_ex(json_config, "parity_shard", &j_obj)) {
-		param->parity_shard = json_object_get_int(j_obj);
-	}
-
-	if (json_object_object_get_ex(json_config, "dscp", &j_obj)) {
-		param->dscp = json_object_get_int(j_obj);
-	}
-
-	if (json_object_object_get_ex(json_config, "nocomp", &j_obj)) {
-		param->nocomp = json_object_get_int(j_obj);
-	}
-
-	if (json_object_object_get_ex(json_config, "acknodelay", &j_obj)) {
-		param->ack_nodelay = json_object_get_int(j_obj);
-	}
-
-	if (json_object_object_get_ex(json_config, "nodelay", &j_obj)) {
-		param->nodelay = json_object_get_int(j_obj);
-	}
-
-	if (json_object_object_get_ex(json_config, "interval", &j_obj)) {
-		param->interval = json_object_get_int(j_obj);
-		debug(LOG_DEBUG, "interval is %d", param->interval);
-	}
-
-	if (json_object_object_get_ex(json_config, "resend", &j_obj)) {
-		param->resend = json_object_get_int(j_obj);
-		debug(LOG_DEBUG, "resend is %d", param->resend);
-	}
-
-	if (json_object_object_get_ex(json_config, "nc", &j_obj)) {
-		param->nc = json_object_get_int(j_obj);
-		debug(LOG_DEBUG, "nc is %d", param->nc);
-	}
-
-	if (json_object_object_get_ex(json_config, "sockbuf", &j_obj)) {
-		param->sock_buf = json_object_get_int(j_obj);
-	}
-
-	if (json_object_object_get_ex(json_config, "keepalive", &j_obj)) {
-		param->keepalive = json_object_get_int(j_obj);
-	}
-
-	debug(LOG_DEBUG, "keepalive is %d", param->keepalive);
-
-err:
-	json_object_put(json_config);
-	if (nret) xkcp_param_free(param);
-	return nret;
+	return 0;
 }
