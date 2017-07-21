@@ -31,9 +31,9 @@ xkcptun主要应用于LEDE，openwrt中，其原理如图：
 
 ### Compile
 
-xkcptun依赖[libevent2](https://github.com/libevent/libevent)和[json-c](https://github.com/json-c/json-c)
+xkcptun依赖[libevent2](https://github.com/libevent/libevent)
 
-安装libevent2和json-c库后
+安装libevent2库后 (apt-get install libevent-dev)
 
 git clone https://github.com/liudf0716/xkcptun.git
 
