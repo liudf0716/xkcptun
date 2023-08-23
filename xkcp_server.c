@@ -76,6 +76,7 @@ static struct xkcp_task *create_new_tcp_connection(const int xkcpfd, struct even
 			struct sockaddr_in *from, int from_len, int conv, iqueue_head *task_list)
 {
 	struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
+	assert(param);
 	memset(param, 0, sizeof(struct xkcp_proxy_param));
 	memcpy(&param->sockaddr, from, from_len);
 	param->xkcpfd = xkcpfd;
