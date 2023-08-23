@@ -16,6 +16,8 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <inttypes.h>
+
 
 
 
@@ -392,7 +394,7 @@ int ikcp_recv(ikcpcb *kcp, char *buffer, int len)
 		fragment = seg->frg;
 
 		if (ikcp_canlog(kcp, IKCP_LOG_RECV)) {
-			ikcp_log(kcp, IKCP_LOG_RECV, "recv sn=%lu", seg->sn);
+			ikcp_log(kcp, IKCP_LOG_RECV, "recv sn=%" PRIu32, seg->sn);
 		}
 
 		if (ispeek == 0) {
@@ -745,7 +747,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 	int flag = 0;
 
 	if (ikcp_canlog(kcp, IKCP_LOG_INPUT)) {
-		ikcp_log(kcp, IKCP_LOG_INPUT, "[RI] %d bytes", size);
+		ikcp_log(kcp, IKCP_LOG_INPUT, "[RI] %ld bytes", size);
 	}
 
 	if (data == NULL || size < IKCP_OVERHEAD) return -1;
@@ -797,7 +799,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 			}
 			if (ikcp_canlog(kcp, IKCP_LOG_IN_ACK)) {
 				ikcp_log(kcp, IKCP_LOG_IN_DATA, 
-					"input ack: sn=%lu rtt=%ld rto=%ld", sn, 
+					"input ack: sn=%" PRIu32 " rtt=%ld rto=%ld", sn, 
 					(long)_itimediff(kcp->current, ts),
 					(long)kcp->rx_rto);
 			}
@@ -805,7 +807,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 		else if (cmd == IKCP_CMD_PUSH) {
 			if (ikcp_canlog(kcp, IKCP_LOG_IN_DATA)) {
 				ikcp_log(kcp, IKCP_LOG_IN_DATA, 
-					"input psh: sn=%lu ts=%lu", sn, ts);
+					"input psh: sn=%" PRIu32 " ts=%" PRIu32, sn, ts);
 			}
 			if (_itimediff(sn, kcp->rcv_nxt + kcp->rcv_wnd) < 0) {
 				ikcp_ack_push(kcp, sn, ts);
@@ -840,7 +842,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 			// do nothing
 			if (ikcp_canlog(kcp, IKCP_LOG_IN_WINS)) {
 				ikcp_log(kcp, IKCP_LOG_IN_WINS,
-					"input wins: %lu", (IUINT32)(wnd));
+					"input wins: %" PRIu32, (IUINT32)(wnd));
 			}
 		}
 		else {
