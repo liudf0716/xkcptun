@@ -78,7 +78,7 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 		if (kcp) {
 			int nret = ikcp_input(kcp, buf, nrecv);
 			if (nret < 0) {
-				debug(LOG_INFO, "conv [%d] ikcp_input failed [%d]", nret);
+				debug(LOG_INFO, "conv [%d] ikcp_input failed [%d]", conv, nret);
 			}
 		} else {
 			debug(LOG_ERR, "xkcp_rcv_cb -- cant get kcp from peer data!!!!!!");
