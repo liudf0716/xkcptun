@@ -191,6 +191,9 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 			}
 			ikcp_flush(task->kcp);
 			ikcp_release(task->kcp);
+			if (puser) { // puser is task->kcp->user (struct xkcp_proxy_param *)
+				free(puser);
+			}
 			del_task(task);
 			free(task);
 		}
