@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.6)
 
 project(xkcptun C)
+find_package(Libevent REQUIRED)
 
 set(src_xkcp_spy
 	xkcp_spy.c)
@@ -16,7 +17,7 @@ set(src_xkcp_server
 	xkcp_config.c
     json.c
 	xkcp_mon.c)
-	
+
 set(src_xkcp_client
 	tcp_proxy.c
 	xkcp_client.c
