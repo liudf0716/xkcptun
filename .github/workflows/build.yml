@@ -1,0 +1,22 @@
+name: Build
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y libevent-dev
+
+    - name: Create build directory
+      run: mkdir build
+
+    - name: Run CMake
+      run: cd build && cmake ..
+
+    - name: Run Make
+      run: cd build && make
