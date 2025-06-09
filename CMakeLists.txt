@@ -1,7 +1,9 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.10)
 
 project(xkcptun C)
-find_package(Libevent REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_search_module(Libevent REQUIRED libevent)
+include_directories(${Libevent_INCLUDE_DIRS})
 
 set(src_xkcp_spy
 	xkcp_spy.c)
@@ -32,7 +34,7 @@ set(src_xkcp_client
 
 set(libs
     m
-	event)
+	${Libevent_LIBRARIES})
 
 ADD_DEFINITIONS(-Wall -O2 --std=gnu99 -Wmissing-declarations)
 
