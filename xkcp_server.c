@@ -111,8 +111,14 @@ static struct xkcp_task *create_new_tcp_connection(const int xkcpfd, struct even
 		  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
 	return task;
 err:
-	free(param);
-	free(task);
+	// Asserts ensure param and task are non-NULL if execution reaches here via goto.
+	// kcp_server is also non-NULL and assigned to task->kcp.
+	if (task->kcp) { // task is not NULL (assert), task->kcp is kcp_server
+		ikcp_release(task->kcp);
+		// task->kcp->user (which is param) is NOT freed by ikcp_release.
+	}
+	free(param); // Free the user data for kcp
+	free(task);  // Free the task structure
 	return NULL;
 }
 
@@ -189,6 +195,7 @@ static int set_xkcp_listener()
 	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
 	if (!addr) {
 		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
+		free(addr); // Free addr even if it's NULL (safe)
 		exit(0);
 	}
 	
@@ -201,15 +208,44 @@ static int set_xkcp_listener()
 	
 	if (bind(xkcp_fd, (struct sockaddr *) &sin, sizeof(sin))) {
 		debug(LOG_ERR, "xkcp_fd bind() failed %s ", strerror(errno));
+		free(addr);
 		exit(EXIT_FAILURE);
 	}
 	
+	free(addr);
 	return xkcp_fd;
 }
 
 static void task_list_free(iqueue_head *task_list)
 {
-	// delete task_list
+	if (task_list == NULL) {
+		return;
+	}
+
+	iqueue_head *p, *n;
+	for (p = (task_list)->next; p != (task_list); p = n) {
+		n = p->next;
+		struct xkcp_task *task = iqueue_entry(p, struct xkcp_task, head);
+
+		if (task->kcp) {
+			struct xkcp_proxy_param *param = (struct xkcp_proxy_param *)task->kcp->user;
+			ikcp_release(task->kcp);
+			if (param) {
+				free(param);
+			}
+			task->kcp = NULL;
+		}
+
+		if (task->bev) {
+			bufferevent_free(task->bev);
+			task->bev = NULL;
+		}
+
+		iqueue_del(&task->head); // or iqueue_del(p); since task->head is p
+		free(task);
+	}
+
+	free(task_list);
 }
 
 int server_main_loop()

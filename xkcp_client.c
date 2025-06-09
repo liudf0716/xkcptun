@@ -95,6 +95,7 @@ static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, vo
 	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
 	if (!addr) {
 		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
+		free(addr); // Free addr even if it's NULL (safe)
 		exit(0);
 	}
 
@@ -108,9 +109,11 @@ static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, vo
 		-1, (struct sockaddr*)&sin, sizeof(sin));
 	if (!listener) {
 		debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
+		free(addr);
 		exit(0);
 	}
 
+	free(addr);
 	return listener;
 }
 
