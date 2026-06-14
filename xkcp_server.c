@@ -195,8 +195,7 @@ static int set_xkcp_listener()
 	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
 	if (!addr) {
 		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
-		free(addr); // Free addr even if it's NULL (safe)
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 	
 	memset(&sin, 0, sizeof(sin));
@@ -205,9 +204,15 @@ static int set_xkcp_listener()
     sin.sin_port = htons(lport);
 	
 	int xkcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (xkcp_fd < 0) {
+		debug(LOG_ERR, "socket() failed: %s", strerror(errno));
+		free(addr);
+		exit(EXIT_FAILURE);
+	}
 	
 	if (bind(xkcp_fd, (struct sockaddr *) &sin, sizeof(sin))) {
 		debug(LOG_ERR, "xkcp_fd bind() failed %s ", strerror(errno));
+		close(xkcp_fd);
 		free(addr);
 		exit(EXIT_FAILURE);
 	}

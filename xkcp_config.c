@@ -146,15 +146,17 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 	buf = malloc(pos + 1);
 	if (buf == NULL) {
 		debug(LOG_ERR, "No enough memory.");
+		fclose(f);
 		return 1;
 	}
 
 	int nread = fread(buf, pos, 1, f);
+	fclose(f);
 	if (!nread) {
 		debug(LOG_ERR, "Failed to read the config file.");
+		free(buf);
 		return 1;
 	}
-	fclose(f);
 
 	buf[pos] = '\0'; // end of string
 
@@ -164,6 +166,7 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 
 	if (obj == NULL) {
 		debug(LOG_ERR, "%s", error_buf);
+		free(buf);
 		return 1;
 	}
 

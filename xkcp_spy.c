@@ -63,9 +63,12 @@ static void readcb(struct bufferevent *bev, void *ctx)
 	
 	if (len > 0) {
 		char *buf = malloc(len+1);
-		memset(buf, 0, len+1);
-		evbuffer_remove(input, buf, len);
-		printf("%s", buf);
+		if (buf) {
+			memset(buf, 0, len+1);
+			evbuffer_remove(input, buf, len);
+			printf("%s", buf);
+			free(buf);
+		}
 	}
 }
 
@@ -144,7 +147,7 @@ int main(int argc, char **argv)
 		char *input = malloc(size);
 		memset(input, 0, size);
 		snprintf(input, size, "%s %s", cmd, param);
-		bufferevent_write(bev, cmd, strlen(cmd));
+		bufferevent_write(bev, input, strlen(input));
 		free(input);
 		free(cmd);
 		free(param);

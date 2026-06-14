@@ -95,8 +95,7 @@ static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, vo
 	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
 	if (!addr) {
 		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
-		free(addr); // Free addr even if it's NULL (safe)
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 
 	memset(&sin, 0, sizeof(sin));
@@ -110,7 +109,7 @@ static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, vo
 	if (!listener) {
 		debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
 		free(addr);
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 
 	free(addr);
@@ -126,25 +125,28 @@ int client_main_loop(void)
 
 	if (xkcp_fd < 0) {
 		debug(LOG_ERR, "ERROR, open udp socket");
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 
 	if (fcntl(xkcp_fd, F_SETFL, O_NONBLOCK) == -1) {
 		debug(LOG_ERR, "ERROR, fcntl error: %s", strerror(errno));
-		exit(0);
+		close(xkcp_fd);
+		exit(EXIT_FAILURE);
 	}
 
 
 	struct hostent *server = gethostbyname(xkcp_get_param()->remote_addr);
 	if (!server) {
 		debug(LOG_ERR, "ERROR, no such host as %s", xkcp_get_param()->remote_addr);
-		exit(0);
+		close(xkcp_fd);
+		exit(EXIT_FAILURE);
 	}
 
 	base = event_base_new();
 	if (!base) {
 		debug(LOG_ERR, "event_base_new()");
-		exit(0);
+		close(xkcp_fd);
+		exit(EXIT_FAILURE);
 	}
 
 	struct xkcp_proxy_param  proxy_param;

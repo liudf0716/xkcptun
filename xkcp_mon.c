@@ -149,10 +149,13 @@ static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx)
 	
 	if ( len > 0) { 
 		char *buf = malloc(len+1);
-		memset(buf, 0, len+1);
-		if (evbuffer_remove(input, buf, len) > 0)
-			process_user_cmd(bev, buf, ctx);
-	} 
+		if (buf) {
+			memset(buf, 0, len+1);
+			if (evbuffer_remove(input, buf, len) > 0)
+				process_user_cmd(bev, buf, ctx);
+			free(buf);
+		}
+	}
 }
 
 void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
@@ -177,7 +180,7 @@ struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, short port
 	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
 	if (!addr) {
 		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 
 	memset(&sin, 0, sizeof(sin));
@@ -190,8 +193,10 @@ struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, short port
 	    -1, (struct sockaddr*)&sin, sizeof(sin));
     if (!listener) {
     	debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
-    	exit(0);
+    	free(addr);
+    	exit(EXIT_FAILURE);
     }
 
+    free(addr);
     return listener;
 }
