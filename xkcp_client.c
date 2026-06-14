@@ -52,6 +52,17 @@
 #include "xkcp_mon.h"
 #include "debug.h"
 
+#include <signal.h>
+
+extern struct event_base *g_exit_base;
+
+static void sigterm_cb(evutil_socket_t sig, short events, void *arg)
+{
+	debug(LOG_INFO, "Caught signal %d, shutting down", sig);
+	struct event_base *base = arg;
+	event_base_loopexit(base, NULL);
+}
+
 IQUEUE_HEAD(xkcp_task_list);
 
 static short mport = 9086;
@@ -149,6 +160,8 @@ int client_main_loop(void)
 		exit(EXIT_FAILURE);
 	}
 
+	g_exit_base = base;
+
 	struct xkcp_proxy_param  proxy_param;
 	memset(&proxy_param, 0, sizeof(proxy_param));
 	proxy_param.base 		= base;
@@ -163,10 +176,16 @@ int client_main_loop(void)
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);
 
+	struct event *sigterm_ev = evsignal_new(base, SIGTERM, sigterm_cb, base);
+	struct event *sigint_ev = evsignal_new(base, SIGINT, sigterm_cb, base);
+	event_add(sigterm_ev, NULL);
+	event_add(sigint_ev, NULL);
+
 	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, &proxy_param);
 	event_add(xkcp_event, NULL);
 
 	event_base_dispatch(base);
+
 	evconnlistener_free(mlistener);
 	evconnlistener_free(listener);
 	close(xkcp_fd);

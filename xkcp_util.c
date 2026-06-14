@@ -49,6 +49,10 @@
 #include "commandline.h"
 #include "debug.h"
 
+#include <signal.h>
+
+struct event_base *g_exit_base = NULL;
+
 static int task_list_count = 0;
 
 int get_task_list_count()
@@ -317,7 +321,7 @@ int xkcp_main(int argc, char **argv)
 
 	if (config->main_loop == NULL) {
 		debug(LOG_ERR, "should set main_loop firstly");
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 
 	if (config->daemon) {

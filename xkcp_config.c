@@ -21,6 +21,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 
 #include <syslog.h>
 
@@ -119,6 +120,41 @@ static char * parse_json_string(const json_value *value)
 	return 0;
 }
 
+enum config_type { CFG_STR, CFG_INT };
+
+struct config_entry {
+	const char *name;
+	enum config_type type;
+	size_t offset;
+};
+
+static struct config_entry config_table[] = {
+	{"localinterface", CFG_STR,  offsetof(struct xkcp_param, local_interface)},
+	{"localport",      CFG_INT,  offsetof(struct xkcp_param, local_port)},
+	{"remoteaddr",     CFG_STR,  offsetof(struct xkcp_param, remote_addr)},
+	{"remoteport",     CFG_INT,  offsetof(struct xkcp_param, remote_port)},
+	{"key",            CFG_STR,  offsetof(struct xkcp_param, key)},
+	{"crypt",          CFG_STR,  offsetof(struct xkcp_param, crypt)},
+	{"mode",           CFG_STR,  offsetof(struct xkcp_param, mode)},
+	{"conn",           CFG_INT,  offsetof(struct xkcp_param, conn)},
+	{"autoexpire",     CFG_INT,  offsetof(struct xkcp_param, auto_expire)},
+	{"scavengettl",    CFG_INT,  offsetof(struct xkcp_param, scavenge_ttl)},
+	{"mtu",            CFG_INT,  offsetof(struct xkcp_param, mtu)},
+	{"sndwnd",         CFG_INT,  offsetof(struct xkcp_param, sndwnd)},
+	{"rcvwnd",         CFG_INT,  offsetof(struct xkcp_param, rcvwnd)},
+	{"datashard",      CFG_INT,  offsetof(struct xkcp_param, data_shard)},
+	{"parity_shard",   CFG_INT,  offsetof(struct xkcp_param, parity_shard)},
+	{"dscp",           CFG_INT,  offsetof(struct xkcp_param, dscp)},
+	{"nocomp",         CFG_INT,  offsetof(struct xkcp_param, nocomp)},
+	{"acknodelay",     CFG_INT,  offsetof(struct xkcp_param, ack_nodelay)},
+	{"nodelay",        CFG_INT,  offsetof(struct xkcp_param, nodelay)},
+	{"interval",       CFG_INT,  offsetof(struct xkcp_param, interval)},
+	{"resend",         CFG_INT,  offsetof(struct xkcp_param, resend)},
+	{"nc",             CFG_INT,  offsetof(struct xkcp_param, nc)},
+	{"keepalive",      CFG_INT,  offsetof(struct xkcp_param, keepalive)},
+	{NULL, 0, 0}
+};
+
 int xkcp_parse_param(const char *filename)
 {
 	return xkcp_parse_json_param(&config.param, filename);
@@ -175,60 +211,23 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 		for (i = 0; i < obj->u.object.length; i++) {
 			char *name		= obj->u.object.values[i].name;
 			json_value *value = obj->u.object.values[i].value;
-			if (strcmp(name, "localinterface") == 0) {
-				param->local_interface = parse_json_string(value);
-				debug(LOG_DEBUG, "local_interface is %s", param->local_interface);
-			} else if (strcmp(name, "localport") == 0) {
-				param->local_port = parse_json_int(value);;
-				debug(LOG_DEBUG, "local_port is %d", param->local_port);
-			} else if (strcmp(name, "remoteaddr") == 0) {
-				param->remote_addr = parse_json_string(value);
-				debug(LOG_DEBUG, "remote_addr is %s", param->remote_addr);
-			} else if (strcmp(name, "remoteport") == 0) {
-				param->remote_port = parse_json_int(value);;
-				debug(LOG_DEBUG, "remote_port is %d", param->remote_port);
-			} else if (strcmp(name, "key") == 0) {
-				param->key = parse_json_string(value);
-			} else if (strcmp(name, "crypt") == 0) {
-				param->crypt = parse_json_string(value);
-			} else if (strcmp(name, "mode") == 0) {
-				param->mode = parse_json_string(value);
-			} else if (strcmp(name, "conn") == 0) {
-				param->conn = parse_json_int(value);;
-			} else if (strcmp(name, "autoexpire") == 0) {
-				param->auto_expire = parse_json_int(value);;
-			} else if (strcmp(name, "scavengettl") == 0) {
-				param->scavenge_ttl = parse_json_int(value);;
-			} else if (strcmp(name, "mtu") == 0) {
-				param->mtu = parse_json_int(value);;
-			} else if (strcmp(name, "sndwnd") == 0) {
-				param->sndwnd = parse_json_int(value);;
-			} else if (strcmp(name, "rcvwnd") == 0) {
-				param->rcvwnd = parse_json_int(value);;
-			} else if (strcmp(name, "datashard") == 0) {
-				param->data_shard = parse_json_int(value);;
-			} else if (strcmp(name, "parity_shard") == 0) {
-				param->parity_shard = parse_json_int(value);;
-			} else if (strcmp(name, "dscp") == 0) {
-				param->dscp = parse_json_int(value);;
-			} else if (strcmp(name, "nocomp") == 0) {
-				param->nocomp = parse_json_int(value);;
-			} else if (strcmp(name, "acknodelay") == 0) {
-				param->ack_nodelay = parse_json_int(value);;
-			} else if (strcmp(name, "nodelay") == 0) {
-				param->nodelay = parse_json_int(value);;
-			} else if (strcmp(name, "interval") == 0) {
-				param->interval = parse_json_int(value);;
-			} else if (strcmp(name, "resend") == 0) {
-				param->resend = parse_json_int(value);;
-			} else if (strcmp(name, "nc") == 0) {
-				param->nc = parse_json_int(value);;
-			} else if (strcmp(name, "keepalive") == 0) {
-				param->keepalive = parse_json_int(value);;
+			struct config_entry *e;
+			for (e = config_table; e->name != NULL; e++) {
+				if (strcmp(name, e->name) == 0) {
+					if (e->type == CFG_STR) {
+						*(char **)((char *)param + e->offset) = parse_json_string(value);
+					} else {
+						*(int *)((char *)param + e->offset) = parse_json_int(value);
+					}
+					debug(LOG_DEBUG, "config %s set", e->name);
+					break;
+				}
 			}
 		}
 	} else {
 		debug(LOG_DEBUG, "Invalid config file");
+		free(buf);
+		json_value_free(obj);
 		return 1;
 	}
 

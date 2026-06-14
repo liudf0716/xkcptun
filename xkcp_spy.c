@@ -43,8 +43,7 @@
 static void timeoutcb(evutil_socket_t fd, short what, void *arg)
 {
 	struct event_base *base = arg;
-	printf("timeout\n");
-
+	fprintf(stderr, "Connection timed out\n");
 	event_base_loopexit(base, NULL);
 }
 
@@ -122,7 +121,7 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 	
-	timeout.tv_sec = 2;
+	timeout.tv_sec = 5;
   	timeout.tv_usec = 0;
 	
 	evtimeout = evtimer_new(base, timeoutcb, base);

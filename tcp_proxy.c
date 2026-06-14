@@ -41,7 +41,21 @@
 #include "xkcp_client.h"
 #include "debug.h"
 
+#include <stdlib.h>
+#include <time.h>
+#include <unistd.h>
+
 extern iqueue_head xkcp_task_list;
+
+static uint32_t next_conv_id = 0;
+
+static uint32_t gen_conv_id(void)
+{
+	if (next_conv_id == 0)
+		next_conv_id = (uint32_t)time(NULL) ^ (uint32_t)getpid();
+	next_conv_id = next_conv_id * 1103515245 + 12345;
+	return next_conv_id;
+}
 
 static void
 tcp_proxy_read_cb(struct bufferevent *bev, void *ctx) 
@@ -70,7 +84,7 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
 	assert(b_in);
 	
-	static int conv = 1;
+	uint32_t conv = gen_conv_id();
 	ikcpcb *kcp_client 	= ikcp_create(conv, param);
 	xkcp_set_config_param(kcp_client);
 	conv++;

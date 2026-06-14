@@ -50,6 +50,17 @@
 #include "xkcp_mon.h"
 #include "tcp_client.h"
 
+#include <signal.h>
+
+extern struct event_base *g_exit_base;
+
+static void sigterm_cb(evutil_socket_t sig, short events, void *arg)
+{
+	debug(LOG_INFO, "Caught signal %d, shutting down", sig);
+	struct event_base *base = arg;
+	event_base_loopexit(base, NULL);
+}
+
 #ifndef NI_MAXHOST
 #define NI_MAXHOST      1025
 #endif
@@ -234,6 +245,7 @@ static void task_list_free(iqueue_head *task_list)
 
 		if (task->kcp) {
 			struct xkcp_proxy_param *param = (struct xkcp_proxy_param *)task->kcp->user;
+			ikcp_flush(task->kcp);
 			ikcp_release(task->kcp);
 			if (param) {
 				free(param);
@@ -246,7 +258,7 @@ static void task_list_free(iqueue_head *task_list)
 			task->bev = NULL;
 		}
 
-		iqueue_del(&task->head); // or iqueue_del(p); since task->head is p
+		iqueue_del(&task->head);
 		free(task);
 	}
 
@@ -263,8 +275,10 @@ int server_main_loop()
 	base = event_base_new();
 	if (!base) {
 		debug(LOG_ERR, "event_base_new()");
-		exit(0);
+		exit(EXIT_FAILURE);
 	}		
+
+	g_exit_base = base;
 	
 	xkcp_hash = create_hash(100);
 	
@@ -279,12 +293,17 @@ int server_main_loop()
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);	
 
+	struct event *sigterm_ev = evsignal_new(base, SIGTERM, sigterm_cb, base);
+	struct event *sigint_ev = evsignal_new(base, SIGINT, sigterm_cb, base);
+	event_add(sigterm_ev, NULL);
+	event_add(sigint_ev, NULL);
+
 	event_base_dispatch(base);
 	
+	delete_hash(xkcp_hash, (void*)task_list_free, HASHPTR/*value*/, HASHSTRING/*key*/);
 	evconnlistener_free(mon_listener);
 	close(xkcp_fd);
 	event_base_free(base);
-	delete_hash(xkcp_hash, (void*)task_list_free, HASHPTR/*value*/, HASHSTRING/*key*/);
 	
 	return 0;
 }
