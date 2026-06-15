@@ -96,6 +96,8 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	task->kcp = kcp_client;
 	task->bev = b_in;
 	task->sockaddr = &p->sockaddr;
+	task->last_active = iclock();
+	task->user_owned = 0;
 	add_task_tail(task, &xkcp_task_list);
 
 	bufferevent_setcb(b_in, tcp_proxy_read_cb, NULL, tcp_proxy_event_cb, task);

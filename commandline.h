@@ -48,7 +48,8 @@ enum {
 	GETOPT_VAL_KEEPALIVE,
 	GETOPT_VAL_SYSLOG,
 	GETOPT_VAL_HELP,
-	GETOPT_VAL_VERSION
+	GETOPT_VAL_VERSION,
+	GETOPT_VAL_CONN_TIMEOUT
 };
 
 /** @brief Parses the command line and set the config accordingly */

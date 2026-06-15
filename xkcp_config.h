@@ -47,6 +47,7 @@ struct xkcp_param {
 	int 	nc; 			// no congestion
 	int 	sock_buf;		// sockbuf
 	int 	keepalive;		// keepalive
+	int 	conn_timeout;	// conn_timeout (seconds, 0=disabled)
 };
 
 struct xkcp_config {

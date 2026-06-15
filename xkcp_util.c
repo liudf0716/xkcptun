@@ -226,7 +226,6 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 			  kcp->conv, bufferevent_getfd(bev), len, nret);
 		memset(buf, 0, 1400);
 	}
-
 }
 
 static void dump_task(struct xkcp_task *task, struct bufferevent *bev, int index) {
@@ -285,6 +284,8 @@ void xkcp_forward_data(struct xkcp_task *task)
 				debug(LOG_INFO, "obuf is small, need to extend it");
 			break;
 		}
+
+		task->last_active = iclock();
 
 		if (nrecv == XKCP_CLOSE_SIGNAL_LEN && memcmp(obuf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
 			debug(LOG_INFO, "xkcp_forward_data conv [%d] received close signal", task->kcp->conv);
@@ -385,7 +386,55 @@ void xkcp_update_task_list(iqueue_head *task_list)
 void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
 {
 	xkcp_update_task_list(task_list);
+	xkcp_task_check_timeout(task_list);
 	set_timer_interval(timeout);
+}
+
+void xkcp_task_check_timeout(iqueue_head *task_list)
+{
+	int conn_timeout = xkcp_get_param()->conn_timeout;
+	if (conn_timeout <= 0)
+		return;
+
+	IUINT32 now = iclock();
+	IUINT32 timeout_ms = (IUINT32)conn_timeout * 1000;
+	struct xkcp_task *task;
+	iqueue_head *p, *n;
+
+	for (p = task_list->next; p != task_list; p = n) {
+		n = p->next;
+		task = iqueue_entry(p, struct xkcp_task, head);
+		if (!task->kcp)
+			continue;
+
+		IUINT32 idle = now - task->last_active;
+		if (idle > timeout_ms) {
+			debug(LOG_INFO, "task conv [%d] timed out after %d seconds, closing",
+				  task->kcp->conv, conn_timeout);
+
+			if (task->user_owned) {
+				struct xkcp_proxy_param *param = (struct xkcp_proxy_param *)task->kcp->user;
+				ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
+				ikcp_flush(task->kcp);
+				ikcp_release(task->kcp);
+				if (param)
+					free(param);
+			} else {
+				ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
+				ikcp_flush(task->kcp);
+				ikcp_release(task->kcp);
+			}
+
+			if (task->bev) {
+				bufferevent_setcb(task->bev, NULL, NULL, NULL, NULL);
+				bufferevent_free(task->bev);
+				task->bev = NULL;
+			}
+
+			del_task(task);
+			free(task);
+		}
+	}
 }
 
 void xkcp_setup_signals(struct event_base *base)

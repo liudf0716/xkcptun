@@ -53,6 +53,7 @@ static struct option long_options[] = {
 	{ "nc",			required_argument,	NULL, GETOPT_VAL_NC},
 	{ "sockbuf",	required_argument,	NULL, GETOPT_VAL_SOCKBUF},
 	{ "keepalive",	required_argument,	NULL, GETOPT_VAL_KEEPALIVE},
+	{ "conntimeout",required_argument,	NULL, GETOPT_VAL_CONN_TIMEOUT},
 	{ "syslog",		no_argument,		NULL, GETOPT_VAL_SYSLOG},
 	{ "help",		no_argument,		NULL, GETOPT_VAL_HELP},
 	{ "version",	no_argument,		NULL, GETOPT_VAL_VERSION},
@@ -94,6 +95,7 @@ usage(const char *appname)
 	fprintf(stdout, "  -L --nodelay      No delay\n");
 	fprintf(stdout, "  -T --interval <num>\n");
 	fprintf(stdout, "  -K --keepalive <num>\n");
+	fprintf(stdout, "  --conntimeout <num> Connection timeout in seconds (default: 60)\n");
 
 	fprintf(stdout, "\n");
 }
@@ -215,6 +217,10 @@ parse_commandline(int argc, char **argv)
 
 		case GETOPT_VAL_KEEPALIVE:
 			param->keepalive = atoi(optarg);
+			break;
+
+		case GETOPT_VAL_CONN_TIMEOUT:
+			param->conn_timeout = atoi(optarg);
 			break;
 
 		case GETOPT_VAL_SYSLOG:

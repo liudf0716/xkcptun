@@ -93,6 +93,8 @@ static struct xkcp_task *create_new_tcp_connection(const int xkcpfd, struct even
 	assert(task);
 	task->kcp = kcp_server;		
 	task->sockaddr = &param->sockaddr;
+	task->last_active = iclock();
+	task->user_owned = 1;
 	
 	struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 	if (!bev) {
