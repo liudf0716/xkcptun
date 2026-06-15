@@ -46,12 +46,20 @@
 #include "ikcp.h"
 #include "xkcp_util.h"
 #include "xkcp_config.h"
+#include "xkcp_mon.h"
 #include "commandline.h"
 #include "debug.h"
 
 #include <signal.h>
 
 struct event_base *g_exit_base = NULL;
+
+static void sigterm_cb(evutil_socket_t sig, short events, void *arg)
+{
+	debug(LOG_INFO, "Caught signal %d, shutting down", sig);
+	struct event_base *base = arg;
+	event_base_loopexit(base, NULL);
+}
 
 static int task_list_count = 0;
 
@@ -187,12 +195,13 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		if (task) {
 			puser = task->kcp->user;
-			debug(LOG_INFO, "tcp_client_event_cb what is [%d] socket [%d]",
+			debug(LOG_INFO, "tcp_event_cb what is [%d] socket [%d]",
 				  what, bufferevent_getfd(bev));
 			if (task->bev != bev) {
 				bufferevent_free(task->bev);
 				debug(LOG_ERR, "impossible here\n");
 			}
+			ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
 			ikcp_flush(task->kcp);
 			ikcp_release(task->kcp);
 			del_task(task);
@@ -277,8 +286,17 @@ void xkcp_forward_data(struct xkcp_task *task)
 			break;
 		}
 
+		if (nrecv == XKCP_CLOSE_SIGNAL_LEN && memcmp(obuf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
+			debug(LOG_INFO, "xkcp_forward_data conv [%d] received close signal", task->kcp->conv);
+			if (task->bev) {
+				bufferevent_free(task->bev);
+				task->bev = NULL;
+			}
+			break;
+		}
+
 		debug(LOG_INFO, "xkcp_forward_data conv [%d] client[%d] send [%d]",
-			  task->kcp->conv, bufferevent_getfd(task->bev), nrecv);
+			  task->kcp->conv, task->bev ? bufferevent_getfd(task->bev) : -1, nrecv);
 		if (task->bev)
 			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
 		else
@@ -368,4 +386,39 @@ void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
 {
 	xkcp_update_task_list(task_list);
 	set_timer_interval(timeout);
+}
+
+void xkcp_setup_signals(struct event_base *base)
+{
+	struct event *sigterm_ev = evsignal_new(base, SIGTERM, sigterm_cb, base);
+	struct event *sigint_ev = evsignal_new(base, SIGINT, sigterm_cb, base);
+	event_add(sigterm_ev, NULL);
+	event_add(sigint_ev, NULL);
+}
+
+struct evconnlistener *xkcp_create_listener(struct event_base *base, short port, void *ptr)
+{
+	struct sockaddr_in sin;
+	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
+	if (!addr) {
+		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
+		exit(EXIT_FAILURE);
+	}
+
+	memset(&sin, 0, sizeof(sin));
+	sin.sin_family = AF_INET;
+	sin.sin_addr.s_addr = inet_addr(addr);
+	sin.sin_port = htons(port);
+
+	struct evconnlistener *listener = evconnlistener_new_bind(base, xkcp_mon_accept_cb, ptr,
+		LEV_OPT_CLOSE_ON_FREE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_REUSEABLE,
+		-1, (struct sockaddr*)&sin, sizeof(sin));
+	if (!listener) {
+		debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
+		free(addr);
+		exit(EXIT_FAILURE);
+	}
+
+	free(addr);
+	return listener;
 }

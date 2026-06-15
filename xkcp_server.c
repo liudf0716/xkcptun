@@ -54,13 +54,6 @@
 
 extern struct event_base *g_exit_base;
 
-static void sigterm_cb(evutil_socket_t sig, short events, void *arg)
-{
-	debug(LOG_INFO, "Caught signal %d, shutting down", sig);
-	struct event_base *base = arg;
-	event_base_loopexit(base, NULL);
-}
-
 #ifndef NI_MAXHOST
 #define NI_MAXHOST      1025
 #endif
@@ -293,10 +286,7 @@ int server_main_loop()
 	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
 	set_timer_interval(&timer_event);	
 
-	struct event *sigterm_ev = evsignal_new(base, SIGTERM, sigterm_cb, base);
-	struct event *sigint_ev = evsignal_new(base, SIGINT, sigterm_cb, base);
-	event_add(sigterm_ev, NULL);
-	event_add(sigint_ev, NULL);
+	xkcp_setup_signals(base);
 
 	event_base_dispatch(base);
 	

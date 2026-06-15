@@ -7,6 +7,9 @@
 #define	OBUF_SIZE 			4096
 #define	BUF_RECV_LEN		1500
 
+#define XKCP_CLOSE_SIGNAL	"\xff\xff\xff\xff"
+#define XKCP_CLOSE_SIGNAL_LEN	4
+
 struct event;
 struct eventbase;
 struct sockaddr_in;
@@ -67,5 +70,9 @@ ikcpcb *get_kcp_from_conv(int conv, iqueue_head *task_list);
 struct xkcp_task *get_task_from_conv(int conv, iqueue_head *task_list);
 
 int xkcp_main(int argc, char **argv);
+
+void xkcp_setup_signals(struct event_base *base);
+
+struct evconnlistener *xkcp_create_listener(struct event_base *base, short port, void *ptr);
 
 #endif
