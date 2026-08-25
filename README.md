@@ -33,7 +33,15 @@ xkcptun主要应用于LEDE，openwrt中，其原理如图：
 
 xkcptun依赖[libevent2](https://github.com/libevent/libevent)
 
-安装libevent2库后 (apt-get install libevent-dev)
+干净 Ubuntu/Debian 上建议先装编译工具链：
+
+```
+sudo apt-get install -y build-essential cmake
+```
+
+`cmake` 默认会检测 `pkg-config` 和 `libevent`；若缺失，会尝试用 `apt` 自动安装 `pkg-config`、`libevent-dev`（需要 root，或当前用户可用 `sudo` 且无需交互输密码）。关闭自动安装：`cmake -DAUTO_INSTALL_DEPS=OFF ..`
+
+也可手动安装依赖：`sudo apt-get install -y pkg-config libevent-dev`
 
 git clone https://github.com/liudf0716/xkcptun.git
 
@@ -41,7 +49,7 @@ cd xkcptun
 
 mkdir build && cd build
 
-cmake .. (camke -DBUILD_STATIC_LINK=yes .. //静态链接)
+cmake ..
 
 make
 
