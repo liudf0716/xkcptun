@@ -273,14 +273,32 @@ void xkcp_forward_all_data(iqueue_head *task_list)
 
 void xkcp_forward_data(struct xkcp_task *task)
 {
-	char obuf[OBUF_SIZE];
+	char sbuf[OBUF_SIZE];
 	IUINT32 now = iclock();
 
 	while (1) {
-		int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
+		/* Ask KCP for the exact size of the next complete packet so a
+		 * payload larger than OBUF_SIZE can never get stuck in the
+		 * receive queue (ikcp_recv would return -3 forever). */
+		int peeksize = ikcp_peeksize(task->kcp);
+		if (peeksize < 0)
+			break;
+
+		char *obuf = sbuf;
+		char *heapbuf = NULL;
+		if (peeksize > (int)sizeof(sbuf)) {
+			heapbuf = malloc(peeksize);
+			if (!heapbuf) {
+				debug(LOG_ERR, "conv [%u] alloc %d bytes for recv failed",
+					  task->kcp->conv, peeksize);
+				break;
+			}
+			obuf = heapbuf;
+		}
+
+		int nrecv = ikcp_recv(task->kcp, obuf, peeksize);
 		if (nrecv < 0) {
-			if (nrecv == -3)
-				debug(LOG_ERR, "ikcp_recv buffer too small");
+			free(heapbuf);
 			break;
 		}
 
@@ -292,11 +310,14 @@ void xkcp_forward_data(struct xkcp_task *task)
 				bufferevent_free(task->bev);
 				task->bev = NULL;
 			}
+			free(heapbuf);
 			break;
 		}
 
 		if (task->bev)
 			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
+
+		free(heapbuf);
 	}
 }
 
