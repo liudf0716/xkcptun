@@ -190,6 +190,10 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 {
 	void *puser = NULL;
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+		/* Unbind callbacks first: bufferevents created with
+		 * BEV_OPT_DEFER_CALLBACKS may still have queued callbacks that
+		 * would otherwise run against a freed task (ctx). */
+		bufferevent_setcb(bev, NULL, NULL, NULL, NULL);
 		if (task) {
 			puser = task->kcp->user;
 			debug(LOG_INFO, "tcp closed conv [%u] what [%d] fd [%d]",
