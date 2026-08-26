@@ -83,7 +83,8 @@ set(src_xkcp_server
 	xkcp_util.c
 	xkcp_config.c
     json.c
-	xkcp_mon.c)
+	xkcp_mon.c
+	fec.c)
 
 set(src_xkcp_client
 	tcp_proxy.c
@@ -95,7 +96,8 @@ set(src_xkcp_client
 	ikcp.c
 	jwHash.c
 	json.c
-	xkcp_mon.c)
+	xkcp_mon.c
+	fec.c)
 
 set(libs
     m
@@ -106,6 +108,10 @@ ADD_DEFINITIONS(-Wall -O2 --std=gnu99 -Wmissing-declarations)
 
 add_executable(xkcp_spy ${src_xkcp_spy})
 target_link_libraries(xkcp_spy ${link_flag} ${libs})
+
+add_executable(test_fec test_fec.c fec.c)
+add_test(NAME fec COMMAND test_fec)
+enable_testing()
 
 add_executable(xkcp_client ${src_xkcp_client})
 target_link_libraries(xkcp_client ${link_flag} ${libs})
