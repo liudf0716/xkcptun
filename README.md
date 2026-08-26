@@ -129,6 +129,19 @@ client.json如下：
 
 注意：`mode` 字段（fast3/fast2/fast/normal）会覆盖 `nodelay`、`interval`、`resend`、`nc` 四个字段的值（与 kcptun 行为一致）。如需精细调优，请直接设置这四个字段并删除 `mode`。
 
+## FEC 前向纠错（实验性）
+
+在两端配置中增加布尔字段 `fec` 即可启用前向纠错：
+
+```
+"fec": 1
+```
+
+- 启用后，每个 UDP 报文会带上 8 字节自描述帧头，并按 `datashard`/`parityshard` 分组生成 Reed-Solomon 校验包；接收端只要收到组内任意 `datashard` 个分片即可还原全部数据，无需重传。
+- FEC 只在持续满速传输时提供保护：未攒满一组的零散包会立即裸发，**不增加任何延迟**。
+- 启用 FEC 时 KCP 的 MTU 会自动下调 8 字节以容纳帧头，无需手工调整 `mtu`。
+- **两端必须同时启用或同时关闭**，且 `datashard`/`parityshard` 取值一致，否则无法互通。取值范围：`datashard` 1~64，`parityshard` 0~64。链路较差时可增大 `parityshard`（带宽开销约为 `parityshard/(datashard+parityshard)`）；好链路建议直接关闭以省流量。
+
 分别运行：
 
 xkcp_server -c server.json -f -d 7
