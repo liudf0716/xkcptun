@@ -133,13 +133,26 @@ static int run_case(int k, int r, uint64_t erase_mask, int shuffle, int dup,
 		fprintf(stderr, "FAIL k=%d r=%d mask=%llx: delivered %d pkts, want %d\n",
 			k, r, (unsigned long long)erase_mask, out.n, k);
 	} else {
-		for (i = 0; i < k && !fail; i++)
-			if (out.lens[i] != olen[i] ||
-			    memcmp(out.data[i], orig[i], olen[i]) != 0) {
+		/* delivery may be reordered: verify as a multiset */
+		int *used = calloc(k, sizeof(int));
+		for (i = 0; i < k && !fail; i++) {
+			int match = 0;
+			for (j = 0; j < k; j++) {
+				if (used[j] || out.lens[j] != olen[i])
+					continue;
+				if (memcmp(out.data[j], orig[i], olen[i]) == 0) {
+					used[j] = 1;
+					match = 1;
+					break;
+				}
+			}
+			if (!match) {
 				fail = 1;
-				fprintf(stderr, "FAIL k=%d r=%d mask=%llx: shard %d mismatch\n",
+				fprintf(stderr, "FAIL k=%d r=%d mask=%llx: shard %d missing or corrupted\n",
 					k, r, (unsigned long long)erase_mask, i);
 			}
+		}
+		free(used);
 	}
 
 	for (i = 0; i < k; i++) {

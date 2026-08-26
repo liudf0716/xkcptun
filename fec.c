@@ -112,7 +112,6 @@ struct fec_grp {
 	uint64_t bitmap;	/* bit i set: shard[i] stored */
 	int cnt;
 	int done;
-	int dnext;		/* next in-order data shard to deliver */
 	uint32_t tick;
 	uint8_t **shard;	/* payload buffers (no header), n entries */
 	uint16_t *slen;		/* stored payload length */
@@ -409,29 +408,19 @@ static int gauss_solve(uint8_t *M, uint8_t *rhs, int m, int width)
 	return 0;
 }
 
-/* Deliver consecutive data shards starting at the watermark. Data
- * shards must not wait for the group to fill: short bursts smaller than
- * a group are sent without parity, so delivery-on-arrival is required
- * to avoid stalling low-rate flows. */
-static void grp_try_deliver(struct fec_conn *c, struct fec_grp *g,
-			    fec_pkt_cb out, void *user)
+/* deliver a stored data shard payload, trimming the embedded length prefix */
+static void grp_deliver_shard(struct fec_conn *c, struct fec_grp *g, int j,
+			      fec_pkt_cb out, void *user)
 {
-	int j;
+	uint16_t plen;
 
-	for (j = g->dnext; j < c->k; j++) {
-		uint16_t plen;
-
-		if (!(g->bitmap & ((uint64_t)1 << j)) || !g->shard[j])
-			break;		/* gap: stop here */
-		plen = (uint16_t)((g->shard[j][0] << 8) | g->shard[j][1]);
-		if (plen > 0 && plen + FEC_LEN_PREFIX <= g->slen[j])
-			out(user, (const char *)g->shard[j] + FEC_LEN_PREFIX,
-			    plen);
-		g->dnext++;
-	}
+	(void)c;
+	plen = (uint16_t)((g->shard[j][0] << 8) | g->shard[j][1]);
+	if (plen > 0 && plen + FEC_LEN_PREFIX <= g->slen[j])
+		out(user, (const char *)g->shard[j] + FEC_LEN_PREFIX, plen);
 }
 
-/* reconstruct missing data shards and deliver whatever becomes contiguous */
+/* reconstruct missing data shards and deliver them */
 static void grp_finish(struct fec_conn *c, struct fec_grp *g,
 		       fec_pkt_cb out, void *user)
 {
@@ -488,22 +477,19 @@ static void grp_finish(struct fec_conn *c, struct fec_grp *g,
 		}	if (gauss_solve(M, rhs, m, width) == 0) {
 		for (a = 0; a < m; a++) {
 			j = missing[a];
-			if (j < g->dnext)
-				continue;	/* already delivered */
 			g->shard[j] = malloc(width);
 			if (!g->shard[j])
 				break;
 			memcpy(g->shard[j], rhs + (size_t)a * width, width);
 			g->slen[j] = (uint16_t)width;
 			g->olen[j] = (uint16_t)width;
-			g->bitmap |= (uint64_t)1 << j;	/* mark as present */
+			g->bitmap |= (uint64_t)1 << j;
+			grp_deliver_shard(c, g, j, out, user);
 		}
 	}
 	free(M);
 	free(rhs);
 	}
-
-	grp_try_deliver(c, g, out, user);
 
 deliver_none:
 	g->done = 1;
@@ -558,8 +544,11 @@ void fec_conn_decode(struct fec_conn *c, const char *pkt, int len,
 	g->bitmap |= (uint64_t)1 << idx;
 	g->cnt++;
 
+	/* Data shards are handed upstream immediately on arrival, possibly
+	 * reordered: ikcp_input reorders by sn and drops duplicates, so this
+	 * avoids head-of-line blocking when a shard is lost mid-group. */
 	if (!parity)
-		grp_try_deliver(c, g, out, user);
+		grp_deliver_shard(c, g, idx, out, user);
 
 	if (g->cnt >= c->k)
 		grp_finish(c, g, out, user);

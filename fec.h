@@ -48,9 +48,10 @@ void fec_conn_encode(struct fec_conn *c, const char *data, int len,
 		     fec_pkt_cb out, void *user);
 
 /* Feed one received UDP datagram; out is invoked once per recovered raw
- * KCP packet, in original order. Data shards are delivered immediately as
- * they arrive (in order); only shards missing behind a gap wait for
- * parity-based reconstruction. Reordering and duplicates are handled. */
+ * KCP packet. Data shards are delivered immediately on arrival and may be
+ * reordered; only lost shards wait for parity-based reconstruction.
+ * ikcp_input reorders by sn and drops duplicates, so this is transparent
+ * upstream while avoiding head-of-line blocking. */
 void fec_conn_decode(struct fec_conn *c, const char *pkt, int len,
 		     fec_pkt_cb out, void *user);
 
