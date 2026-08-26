@@ -54,6 +54,8 @@ static void clean_useless_client()
 			iqueue_head *list = entry->value.ptrValue;
 			if (list && iqueue_is_empty(list)) {
 				free(list);
+				/* also drop the per-peer FEC codec for the same key */
+				xkcp_server_drop_peer_fec(entry->key.strValue);
 				del_by_str(table, entry->key.strValue);
 			}
 			entry = next;

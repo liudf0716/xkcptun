@@ -43,6 +43,7 @@
 #include <event2/util.h>
 
 #include "ikcp.h"
+#include "fec.h"
 #include "debug.h"
 #include "jwHash.h"
 #include "xkcp_server.h"
@@ -57,10 +58,50 @@ extern struct event_base *g_exit_base;
 
 static short mport = 9087;
 static jwHashTable *xkcp_hash = NULL;
+static jwHashTable *fec_hash = NULL;  /* key "ip:port" -> struct fec_conn * */
 
 jwHashTable * get_xkcp_hash()
 {
 	return xkcp_hash;
+}
+
+/* Return the FEC codec for peer "ip:port", creating it on first use.
+ * Returns NULL when FEC is disabled or allocation failed. */
+static struct fec_conn *get_peer_fec(const char *key)
+{
+	struct fec_conn *f = NULL;
+	struct xkcp_param *p;
+	int cap;
+
+	if (!fec_hash)
+		return NULL;
+	if (get_ptr_by_str(fec_hash, (char *)key, (void **)&f) == HASHOK)
+		return f;
+
+	p = xkcp_get_param();
+	cap = p->mtu > 0 ? p->mtu : 1350;
+	f = fec_conn_new(p->data_shard, p->parity_shard, cap);
+	if (!f) {
+		debug(LOG_ERR, "fec_conn_new failed for [%s], FEC off for this peer", key);
+		return NULL;
+	}
+	if (add_ptr_by_str(fec_hash, (char *)key, f) != HASHOK) {
+		fec_conn_free(f);
+		return NULL;
+	}
+	return f;
+}
+
+void xkcp_server_drop_peer_fec(const char *key)
+{
+	struct fec_conn *f = NULL;
+
+	if (!fec_hash || !key)
+		return;
+	if (get_ptr_by_str(fec_hash, (char *)key, (void **)&f) != HASHOK || !f)
+		return;
+	del_by_str(fec_hash, (char *)key);
+	fec_conn_free(f);
 }
 
 static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
@@ -82,6 +123,13 @@ static struct xkcp_task *create_new_tcp_connection(const int xkcpfd, struct even
 
 	ikcpcb *kcp_server = ikcp_create(conv, param);
 	xkcp_set_config_param(kcp_server);
+
+	if (fec_hash) {
+		char fkey[32];
+		snprintf(fkey, sizeof(fkey), "%u:%u",
+			 ntohl(from->sin_addr.s_addr), ntohs(from->sin_port));
+		param->fec = get_peer_fec(fkey);
+	}
 
 	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 	assert(task);
@@ -134,8 +182,10 @@ err:
 	return NULL;
 }
 
-static void accept_client_data(const int xkcpfd, struct event_base *base,
-			struct sockaddr_in *from, int from_len, char *data, int len)
+/* feed one raw KCP packet into the matching session */
+static void route_kcp_packet(const int xkcpfd, struct event_base *base,
+			     struct sockaddr_in *from, int from_len,
+			     const char *data, int len)
 {
 	char key[32];
 	iqueue_head *task_list = NULL;
@@ -164,6 +214,47 @@ static void accept_client_data(const int xkcpfd, struct event_base *base,
 		xkcp_forward_data(task);
 		ikcp_flush(task->kcp);
 	}
+}
+
+struct fec_route_ctx {
+	int xkcpfd;
+	struct event_base *base;
+	struct sockaddr_in *from;
+	int from_len;
+	char key[32];
+};
+
+static void fec_route_pkt(void *user, const char *pkt, int len)
+{
+	struct fec_route_ctx *ctx = user;
+	route_kcp_packet(ctx->xkcpfd, ctx->base, ctx->from, ctx->from_len,
+			 pkt, len);
+}
+
+static void accept_client_data(const int xkcpfd, struct event_base *base,
+			struct sockaddr_in *from, int from_len, char *data, int len)
+{
+	struct fec_route_ctx ctx;
+	struct fec_conn *f;
+
+	if (!fec_hash) {
+		route_kcp_packet(xkcpfd, base, from, from_len, data, len);
+		return;
+	}
+
+	snprintf(ctx.key, sizeof(ctx.key), "%u:%u",
+		 ntohl(from->sin_addr.s_addr), ntohs(from->sin_port));
+	f = get_peer_fec(ctx.key);
+	if (!f) {
+		route_kcp_packet(xkcpfd, base, from, from_len, data, len);
+		return;
+	}
+
+	ctx.xkcpfd = xkcpfd;
+	ctx.base = base;
+	ctx.from = from;
+	ctx.from_len = from_len;
+	fec_conn_decode(f, data, len, fec_route_pkt, &ctx);
 }
 
 static void xkcp_rcv_cb(const int sock, short int which, void *arg)
@@ -277,6 +368,8 @@ int server_main_loop()
 	g_exit_base = base;
 	
 	xkcp_hash = create_hash(100);
+	if (xkcp_get_param()->fec)
+		fec_hash = create_hash(100);
 	
 	int xkcp_fd = set_xkcp_listener();
 	
@@ -293,6 +386,7 @@ int server_main_loop()
 
 	event_base_dispatch(base);
 	
+	delete_hash(fec_hash, (void *)fec_conn_free, HASHPTR/*value*/, HASHSTRING/*key*/);
 	delete_hash(xkcp_hash, (void*)task_list_free, HASHPTR/*value*/, HASHSTRING/*key*/);
 	evconnlistener_free(mon_listener);
 	close(xkcp_fd);
