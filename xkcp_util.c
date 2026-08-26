@@ -175,11 +175,13 @@ void xkcp_set_config_param(ikcpcb *kcp)
 	kcp->output	= xkcp_output;
 	ikcp_wndsize(kcp, param->sndwnd, param->rcvwnd);
 	ikcp_nodelay(kcp, param->nodelay, param->interval, param->resend, param->nc);
+	if (param->mtu > 0)
+		ikcp_setmtu(kcp, param->mtu);
 }
 
-static void set_tcp_no_delay(evutil_socket_t fd)
+void xkcp_set_tcp_nodelay(int fd)
 {
-  	int one = 1;
+	int one = 1;
 	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 }
 
@@ -204,7 +206,7 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 		}
 		bufferevent_free(bev);
 	} else if (what & BEV_EVENT_CONNECTED) {
-		set_tcp_no_delay(bufferevent_getfd(bev));
+		xkcp_set_tcp_nodelay(bufferevent_getfd(bev));
 	}
 
 	return puser;
@@ -212,7 +214,7 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 {
-	char buf[1400] = {0};
+	char buf[2048];
 	int  len, nret;
 	struct evbuffer *input = bufferevent_get_input(bev);
 	while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) {
@@ -221,6 +223,7 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 			debug(LOG_INFO, "ikcp_send conv [%u] failed [%d] len [%d]",
 				  kcp->conv, nret, len);
 	}
+	ikcp_flush(kcp);
 }
 
 static void dump_task(struct xkcp_task *task, struct bufferevent *bev, int index) {
@@ -270,8 +273,10 @@ void xkcp_forward_all_data(iqueue_head *task_list)
 
 void xkcp_forward_data(struct xkcp_task *task)
 {
-	while(1) {
-		char obuf[OBUF_SIZE] = {0};
+	char obuf[OBUF_SIZE];
+	IUINT32 now = iclock();
+
+	while (1) {
 		int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
 		if (nrecv < 0) {
 			if (nrecv == -3)
@@ -279,7 +284,7 @@ void xkcp_forward_data(struct xkcp_task *task)
 			break;
 		}
 
-		task->last_active = iclock();
+		task->last_active = now;
 
 		if (nrecv == XKCP_CLOSE_SIGNAL_LEN && memcmp(obuf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
 			debug(LOG_INFO, "conv [%u] received close signal", task->kcp->conv);
@@ -355,19 +360,25 @@ int xkcp_main(int argc, char **argv)
 void
 set_timer_interval(struct event *timeout)
 {
+	int interval_ms = xkcp_get_param()->interval;
 	struct timeval tv;
+
+	if (interval_ms < 1)
+		interval_ms = 10;
 	evutil_timerclear(&tv);
-	tv.tv_usec = xkcp_get_param()->interval;
+	tv.tv_sec = interval_ms / 1000;
+	tv.tv_usec = (interval_ms % 1000) * 1000;
 	event_add(timeout, &tv);
 }
 
 void xkcp_update_task_list(iqueue_head *task_list)
 {
 	struct xkcp_task *task;
+	IUINT32 now = iclock();
+
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp) {
-			ikcp_update(task->kcp, iclock());
-		}
+		if (task->kcp)
+			ikcp_update(task->kcp, now);
 	}
 }
 

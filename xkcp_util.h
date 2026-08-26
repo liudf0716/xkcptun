@@ -53,6 +53,8 @@ void dump_task_list(iqueue_head *task_list, struct bufferevent *bev);
 
 void xkcp_set_config_param(ikcpcb *kcp);
 
+void xkcp_set_tcp_nodelay(int fd);
+
 void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task);
 
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp);

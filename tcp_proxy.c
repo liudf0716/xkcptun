@@ -61,9 +61,8 @@ static void
 tcp_proxy_read_cb(struct bufferevent *bev, void *ctx) 
 {
 	struct xkcp_task *task = ctx;
-	ikcpcb *kcp = task->kcp;
-	xkcp_tcp_read_cb(bev, kcp);
-	xkcp_forward_all_data(&xkcp_task_list);
+	xkcp_tcp_read_cb(bev, task->kcp);
+	xkcp_forward_data(task);
 }
 
 static void
@@ -80,6 +79,7 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct bufferevent *b_in = NULL;
 	struct event_base *base = evconnlistener_get_base(listener);
 
+	xkcp_set_tcp_nodelay(fd);
 	b_in = bufferevent_socket_new(base, fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
 	assert(b_in);

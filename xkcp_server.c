@@ -24,6 +24,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <netdb.h>
 #include <sys/time.h>
@@ -53,13 +54,6 @@
 #include <signal.h>
 
 extern struct event_base *g_exit_base;
-
-#ifndef NI_MAXHOST
-#define NI_MAXHOST      1025
-#endif
-#ifndef NI_MAXSERV
-#define NI_MAXSERV      32
-#endif
 
 static short mport = 9087;
 static jwHashTable *xkcp_hash = NULL;
@@ -105,12 +99,24 @@ static struct xkcp_task *create_new_tcp_connection(const int xkcpfd, struct even
 	task->bev = bev;
 	bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
 	bufferevent_enable(bev, EV_READ);
-	if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, 
-										   xkcp_get_param()->remote_addr,
-										   xkcp_get_param()->remote_port) < 0) {
-		bufferevent_free(bev);
-		debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
-		goto err;
+	{
+		struct sockaddr_in sin;
+		memset(&sin, 0, sizeof(sin));
+		sin.sin_family = AF_INET;
+		sin.sin_port = htons(xkcp_get_param()->remote_port);
+		if (inet_aton(xkcp_get_param()->remote_addr, &sin.sin_addr)) {
+			if (bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+				bufferevent_free(bev);
+				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
+				goto err;
+			}
+		} else if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET,
+							       xkcp_get_param()->remote_addr,
+							       xkcp_get_param()->remote_port) < 0) {
+			bufferevent_free(bev);
+			debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
+			goto err;
+		}
 	}
 	add_task_tail(task, task_list);
 	debug(LOG_INFO, "new session conv [%u] -> [%s]:[%d]",
@@ -131,57 +137,53 @@ err:
 static void accept_client_data(const int xkcpfd, struct event_base *base,
 			struct sockaddr_in *from, int from_len, char *data, int len)
 {
-	char host[NI_MAXHOST] = {0};
-    char serv[NI_MAXSERV] = {0};
-	char key[NI_MAXHOST+NI_MAXSERV+1] = {0};
-	
-	int nret = getnameinfo((struct sockaddr *) from, from_len,
-                    host, sizeof(host), serv, sizeof(serv),
-                    NI_NUMERICHOST | NI_DGRAM);
-	if (nret) {
-		debug(LOG_ERR, "getnameinfo error %s", strerror(errno));
-		return ;
-	}
-
+	char key[32];
 	iqueue_head *task_list = NULL;
-	snprintf(key, NI_MAXHOST+NI_MAXSERV+1, "%s:%s", host, serv);
 	struct xkcp_task *task = NULL;
 	IUINT32 conv = ikcp_getconv(data);
+
+	snprintf(key, sizeof(key), "%u:%u",
+		 ntohl(from->sin_addr.s_addr), ntohs(from->sin_port));
+
 	if (get_ptr_by_str(xkcp_hash, key, (void*)&task_list) == HASHOK) {
 		task = get_task_from_conv(conv, task_list);
 		if (!task)
 			task = create_new_tcp_connection(xkcpfd, base, from, from_len, conv, task_list);
 	} else {
-		if (!task_list) {
-			task_list = malloc(sizeof(iqueue_head));
-			iqueue_init(task_list);
-		}
+		task_list = malloc(sizeof(iqueue_head));
+		if (!task_list)
+			return;
+		iqueue_init(task_list);
 		add_ptr_by_str(xkcp_hash, key, task_list);
 		task = create_new_tcp_connection(xkcpfd, base, from, from_len, conv, task_list);
 	}
 
 	if (task && task->kcp) {
-		int nret = ikcp_input(task->kcp, data, len);
-		if (nret < 0)
-			debug(LOG_INFO, "conv [%u] ikcp_input failed [%d]", task->kcp->conv, nret);
+		if (ikcp_input(task->kcp, data, len) < 0)
+			debug(LOG_INFO, "conv [%u] ikcp_input failed", task->kcp->conv);
+		xkcp_forward_data(task);
+		ikcp_flush(task->kcp);
 	}
-
-	if (task_list)
-		xkcp_forward_all_data(task_list);
 }
 
 static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 {	
 	struct event_base *base = arg;
 	struct sockaddr_in clientaddr;
-	int clientlen = sizeof(clientaddr);
-	memset(&clientaddr, 0, clientlen);
-	
-	char buf[BUF_RECV_LEN] = {0};
-	int len = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr *) &clientaddr, (socklen_t*)&clientlen);
-	if (len > 0) {
+	char buf[BUF_RECV_LEN];
+	socklen_t clientlen;
+	int len;
+
+	(void)which;
+
+	while (1) {
+		clientlen = sizeof(clientaddr);
+		len = recvfrom(sock, buf, sizeof(buf), 0,
+			       (struct sockaddr *)&clientaddr, &clientlen);
+		if (len <= 0)
+			break;
 		accept_client_data(sock, base, &clientaddr, clientlen, buf, len);
-	}	
+	}
 }
 
 static int set_xkcp_listener()
@@ -205,7 +207,14 @@ static int set_xkcp_listener()
 		free(addr);
 		exit(EXIT_FAILURE);
 	}
-	
+
+	if (fcntl(xkcp_fd, F_SETFL, O_NONBLOCK) == -1) {
+		debug(LOG_ERR, "fcntl O_NONBLOCK failed: %s", strerror(errno));
+		close(xkcp_fd);
+		free(addr);
+		exit(EXIT_FAILURE);
+	}
+
 	if (bind(xkcp_fd, (struct sockaddr *) &sin, sizeof(sin))) {
 		debug(LOG_ERR, "xkcp_fd bind() failed %s ", strerror(errno));
 		close(xkcp_fd);

@@ -69,19 +69,31 @@ timer_event_cb(evutil_socket_t fd, short event, void *arg)
 void
 xkcp_rcv_cb(const int sock, short int which, void *arg)
 {
-	struct xkcp_proxy_param  *ptr = arg;
-	char buf[XKCP_RECV_BUF_LEN] = {0};
-	int nrecv = 0;
+	char buf[XKCP_RECV_BUF_LEN];
+	struct sockaddr_in from;
+	socklen_t from_len;
+	int nrecv;
 
-	if ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &ptr->sockaddr, (socklen_t*)&ptr->addr_len)) > 0) {
+	(void)arg;
+	(void)which;
+
+	while (1) {
+		from_len = sizeof(from);
+		nrecv = recvfrom(sock, buf, sizeof(buf), 0,
+				 (struct sockaddr *)&from, &from_len);
+		if (nrecv <= 0)
+			break;
+
 		IUINT32 conv = ikcp_getconv(buf);
-		ikcpcb *kcp = get_kcp_from_conv(conv, &xkcp_task_list);
-		if (kcp) {
-			int nret = ikcp_input(kcp, buf, nrecv);
-			if (nret < 0)
-				debug(LOG_INFO, "conv [%u] ikcp_input failed [%d]", conv, nret);
-		}
-		xkcp_forward_all_data(&xkcp_task_list);
+		struct xkcp_task *task = get_task_from_conv(conv, &xkcp_task_list);
+		if (!task || !task->kcp)
+			continue;
+
+		if (ikcp_input(task->kcp, buf, nrecv) < 0)
+			debug(LOG_INFO, "conv [%u] ikcp_input failed", conv);
+
+		xkcp_forward_data(task);
+		ikcp_flush(task->kcp);
 	}
 }
 
