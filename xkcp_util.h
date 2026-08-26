@@ -14,12 +14,14 @@ struct event;
 struct eventbase;
 struct sockaddr_in;
 struct bufferevent;
+struct fec_conn;
 
 struct xkcp_proxy_param {
 	struct event_base 	*base;
 	int 				xkcpfd;
 	struct sockaddr_in	sockaddr;
 	int 				addr_len;
+	struct fec_conn		*fec;		/* per-peer FEC codec, NULL = disabled */
 };
 
 struct xkcp_task {

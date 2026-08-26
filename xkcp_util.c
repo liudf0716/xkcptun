@@ -159,10 +159,30 @@ del_task(struct xkcp_task *task) {
 	__list_del(entry->prev, entry->next);
 }
 
+struct fec_send_ctx {
+	int fd;
+	struct sockaddr_in *addr;
+};
+
+static void fec_send_pkt(void *user, const char *pkt, int len)
+{
+	struct fec_send_ctx *ctx = user;
+	sendto(ctx->fd, pkt, len, 0, (struct sockaddr *)ctx->addr, sizeof(*ctx->addr));
+}
+
 static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;
-	int nret = sendto(ptr->xkcpfd, buf, len, 0, (struct sockaddr *)&ptr->sockaddr, sizeof(ptr->sockaddr));
+	int nret;
+
+	if (ptr->fec) {
+		/* frame + (at group end) parity-protect the segment */
+		struct fec_send_ctx ctx = { ptr->xkcpfd, &ptr->sockaddr };
+		fec_conn_encode(ptr->fec, buf, len, fec_send_pkt, &ctx);
+		return len;
+	}
+
+	nret = sendto(ptr->xkcpfd, buf, len, 0, (struct sockaddr *)&ptr->sockaddr, sizeof(ptr->sockaddr));
 	if (nret < 0)
 		debug(LOG_ERR, "xkcp_output conv [%u] fd [%d] sendto: %s",
 			  kcp->conv, ptr->xkcpfd, strerror(errno));

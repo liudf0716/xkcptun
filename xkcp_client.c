@@ -44,6 +44,7 @@
 #include <syslog.h>
 
 #include "ikcp.h"
+#include "fec.h"
 #include "xkcp_util.h"
 #include "tcp_proxy.h"
 #include "xkcp_config.h"
@@ -59,6 +60,28 @@ extern struct event_base *g_exit_base;
 IQUEUE_HEAD(xkcp_task_list);
 
 static short mport = 9086;
+static struct fec_conn *g_fec = NULL;
+
+/* deliver one raw KCP packet (post-FEC-decode) to the session layer */
+static void client_handle_packet(char *buf, int nrecv)
+{
+	IUINT32 conv = ikcp_getconv(buf);
+	struct xkcp_task *task = get_task_from_conv(conv, &xkcp_task_list);
+	if (!task || !task->kcp)
+		return;
+
+	if (ikcp_input(task->kcp, buf, nrecv) < 0)
+		debug(LOG_INFO, "conv [%u] ikcp_input failed", conv);
+
+	xkcp_forward_data(task);
+	ikcp_flush(task->kcp);
+}
+
+static void fec_deliver_pkt(void *user, const char *pkt, int len)
+{
+	(void)user;
+	client_handle_packet((char *)pkt, len);
+}
 
 void
 timer_event_cb(evutil_socket_t fd, short event, void *arg)
@@ -84,16 +107,10 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 		if (nrecv <= 0)
 			break;
 
-		IUINT32 conv = ikcp_getconv(buf);
-		struct xkcp_task *task = get_task_from_conv(conv, &xkcp_task_list);
-		if (!task || !task->kcp)
-			continue;
-
-		if (ikcp_input(task->kcp, buf, nrecv) < 0)
-			debug(LOG_INFO, "conv [%u] ikcp_input failed", conv);
-
-		xkcp_forward_data(task);
-		ikcp_flush(task->kcp);
+		if (g_fec)
+			fec_conn_decode(g_fec, buf, nrecv, fec_deliver_pkt, NULL);
+		else
+			client_handle_packet(buf, nrecv);
 	}
 }
 
@@ -162,6 +179,14 @@ int client_main_loop(void)
 
 	g_exit_base = base;
 
+	struct xkcp_param *xparam = xkcp_get_param();
+	if (xparam->fec) {
+		int cap = xparam->mtu > 0 ? xparam->mtu : 1350;
+		g_fec = fec_conn_new(xparam->data_shard, xparam->parity_shard, cap);
+		if (!g_fec)
+			debug(LOG_ERR, "fec_conn_new failed, running without FEC");
+	}
+
 	struct xkcp_proxy_param  proxy_param;
 	memset(&proxy_param, 0, sizeof(proxy_param));
 	proxy_param.base 		= base;
@@ -169,6 +194,7 @@ int client_main_loop(void)
 	proxy_param.sockaddr.sin_family 	= AF_INET;
 	proxy_param.sockaddr.sin_port		= htons(xkcp_get_param()->remote_port);
 	memcpy((char *)&proxy_param.sockaddr.sin_addr.s_addr, (char *)server->h_addr, server->h_length);
+	proxy_param.fec = g_fec;
 	listener = set_tcp_proxy_listener(base, &proxy_param);
 
 	mlistener = set_xkcp_mon_listener(base, mport, &xkcp_task_list);
@@ -187,6 +213,7 @@ int client_main_loop(void)
 	evconnlistener_free(listener);
 	close(xkcp_fd);
 	event_base_free(base);
+	fec_conn_free(g_fec);
 
 	return 0;
 }
