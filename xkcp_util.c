@@ -44,6 +44,7 @@
 #include <syslog.h>
 
 #include "ikcp.h"
+#include "fec.h"
 #include "xkcp_util.h"
 #include "xkcp_config.h"
 #include "xkcp_mon.h"
@@ -175,8 +176,14 @@ void xkcp_set_config_param(ikcpcb *kcp)
 	kcp->output	= xkcp_output;
 	ikcp_wndsize(kcp, param->sndwnd, param->rcvwnd);
 	ikcp_nodelay(kcp, param->nodelay, param->interval, param->resend, param->nc);
-	if (param->mtu > 0)
-		ikcp_setmtu(kcp, param->mtu);
+	/* FEC frames add an 8-byte header to every datagram: shrink the KCP
+	 * mtu accordingly so framed packets stay within the path MTU. */
+	if (param->mtu > 0) {
+		int mtu = param->mtu;
+		if (param->fec && mtu > FEC_HDR_SIZE)
+			mtu -= FEC_HDR_SIZE;
+		ikcp_setmtu(kcp, mtu);
+	}
 }
 
 void xkcp_set_tcp_nodelay(int fd)

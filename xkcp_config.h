@@ -45,6 +45,7 @@ struct xkcp_param {
 	int		interval;		// interval
 	int 	resend;			// resend
 	int 	nc; 			// no congestion
+	int		fec;			// fec enable (1=frame all datagrams)
 	int 	sock_buf;		// sockbuf
 	int 	keepalive;		// keepalive
 	int 	conn_timeout;	// conn_timeout (seconds, 0=disabled)

@@ -63,6 +63,7 @@ static void xkcp_param_init(struct xkcp_param *param)
 	param->interval = 20;
 	param->resend = 2;
 	param->nc = 0;
+	param->fec = 0;
 	param->sock_buf = 4194304;
 	param->keepalive = 10;
 	param->conn_timeout = 60;
@@ -153,6 +154,7 @@ static struct config_entry config_table[] = {
 	{"interval",       CFG_INT,  offsetof(struct xkcp_param, interval)},
 	{"resend",         CFG_INT,  offsetof(struct xkcp_param, resend)},
 	{"nc",             CFG_INT,  offsetof(struct xkcp_param, nc)},
+	{"fec",            CFG_INT,  offsetof(struct xkcp_param, fec)},
 	{"sockbuf",        CFG_INT,  offsetof(struct xkcp_param, sock_buf)},
 	{"keepalive",      CFG_INT,  offsetof(struct xkcp_param, keepalive)},
 	{"conntimeout",    CFG_INT,  offsetof(struct xkcp_param, conn_timeout)},
