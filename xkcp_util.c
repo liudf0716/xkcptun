@@ -353,10 +353,20 @@ void xkcp_forward_all_data(iqueue_head *task_list)
 	}
 }
 
+/* stop draining KCP into TCP when downstream is slower than the tunnel;
+ * data stays in the KCP receive queue, its window closes and backpressure
+ * propagates to the sender. The periodic timer resumes draining. */
+#define XKCP_TCP_OUTBUF_LIMIT	(256 * 1024)
+
 void xkcp_forward_data(struct xkcp_task *task)
 {
 	char sbuf[OBUF_SIZE];
 	IUINT32 now = iclock();
+
+	if (task->bev &&
+	    evbuffer_get_length(bufferevent_get_output(task->bev)) >
+	    XKCP_TCP_OUTBUF_LIMIT)
+		return;
 
 	while (1) {
 		/* Ask KCP for the exact size of the next complete packet so a
