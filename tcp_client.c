@@ -42,25 +42,19 @@
 #include "ikcp.h"
 #include "jwHash.h"
 
+// Remove hash entries whose task list has become empty. Deletion goes
+// through del_by_str() so the table's own bookkeeping stays consistent.
 static void clean_useless_client()
 {
 	jwHashTable *table = get_xkcp_hash();
 	for(int i = 0; i < table->buckets; i++) {
 		jwHashEntry *entry = table->bucket[i];
-		jwHashEntry *previous = NULL;
 		while(entry) {
-			iqueue_head *list = entry->value.ptrValue;
 			jwHashEntry *next = entry->next;
+			iqueue_head *list = entry->value.ptrValue;
 			if (list && iqueue_is_empty(list)) {
-				if(!previous)
-					table->bucket[i] = next;
-				else
-					previous->next = next;
-				free(entry->value.strValue);
-				free(entry->key.strValue);
-				free(entry);
-			} else {
-				previous = entry;
+				free(list);
+				del_by_str(table, entry->key.strValue);
 			}
 			entry = next;
 		}
