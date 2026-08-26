@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <strings.h>
 
 #include <syslog.h>
 
@@ -161,6 +162,31 @@ static struct config_entry config_table[] = {
 int xkcp_parse_param(const char *filename)
 {
 	return xkcp_parse_json_param(&config.param, filename);
+}
+
+/* Apply kcptun-compatible mode presets. When "mode" is set it overrides
+ * the four KCP tuning knobs (nodelay/interval/resend/nc), matching the
+ * behavior of xtaci/kcptun. Call after config file and command line are
+ * both parsed. */
+void xkcp_apply_mode(void)
+{
+	struct xkcp_param *param = xkcp_get_param();
+
+	if (!param->mode)
+		return;
+
+	if (!strcasecmp(param->mode, "fast3")) {
+		param->nodelay = 1; param->interval = 10; param->resend = 2; param->nc = 1;
+	} else if (!strcasecmp(param->mode, "fast2")) {
+		param->nodelay = 1; param->interval = 10; param->resend = 2; param->nc = 0;
+	} else if (!strcasecmp(param->mode, "fast")) {
+		param->nodelay = 0; param->interval = 20; param->resend = 2; param->nc = 0;
+	} else if (!strcasecmp(param->mode, "normal")) {
+		param->nodelay = 0; param->interval = 30; param->resend = 2; param->nc = 0;
+	} else {
+		debug(LOG_ERR, "unknown mode [%s], ignored (valid: fast3/fast2/fast/normal)",
+			  param->mode);
+	}
 }
 
 // 1: error; 0, success

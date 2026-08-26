@@ -373,6 +373,8 @@ int xkcp_main(int argc, char **argv)
 
 	parse_commandline(argc, argv);
 
+	xkcp_apply_mode();
+
 	if (config->main_loop == NULL) {
 		debug(LOG_ERR, "should set main_loop firstly");
 		exit(EXIT_FAILURE);

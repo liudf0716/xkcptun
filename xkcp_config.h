@@ -71,4 +71,6 @@ int xkcp_parse_json_param(struct xkcp_param *config, const char *filename);
 
 struct xkcp_param *xkcp_get_param(void);
 
+void xkcp_apply_mode(void);
+
 #endif

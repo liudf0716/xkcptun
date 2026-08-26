@@ -127,6 +127,8 @@ client.json如下：
 }
 ```
 
+注意：`mode` 字段（fast3/fast2/fast/normal）会覆盖 `nodelay`、`interval`、`resend`、`nc` 四个字段的值（与 kcptun 行为一致）。如需精细调优，请直接设置这四个字段并删除 `mode`。
+
 分别运行：
 
 xkcp_server -c server.json -f -d 7
