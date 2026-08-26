@@ -144,7 +144,7 @@ static struct config_entry config_table[] = {
 	{"sndwnd",         CFG_INT,  offsetof(struct xkcp_param, sndwnd)},
 	{"rcvwnd",         CFG_INT,  offsetof(struct xkcp_param, rcvwnd)},
 	{"datashard",      CFG_INT,  offsetof(struct xkcp_param, data_shard)},
-	{"parity_shard",   CFG_INT,  offsetof(struct xkcp_param, parity_shard)},
+	{"parityshard",    CFG_INT,  offsetof(struct xkcp_param, parity_shard)},
 	{"dscp",           CFG_INT,  offsetof(struct xkcp_param, dscp)},
 	{"nocomp",         CFG_INT,  offsetof(struct xkcp_param, nocomp)},
 	{"acknodelay",     CFG_INT,  offsetof(struct xkcp_param, ack_nodelay)},
@@ -152,6 +152,7 @@ static struct config_entry config_table[] = {
 	{"interval",       CFG_INT,  offsetof(struct xkcp_param, interval)},
 	{"resend",         CFG_INT,  offsetof(struct xkcp_param, resend)},
 	{"nc",             CFG_INT,  offsetof(struct xkcp_param, nc)},
+	{"sockbuf",        CFG_INT,  offsetof(struct xkcp_param, sock_buf)},
 	{"keepalive",      CFG_INT,  offsetof(struct xkcp_param, keepalive)},
 	{"conntimeout",    CFG_INT,  offsetof(struct xkcp_param, conn_timeout)},
 	{NULL, 0, 0}
