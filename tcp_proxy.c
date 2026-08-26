@@ -51,10 +51,18 @@ static uint32_t next_conv_id = 0;
 
 static uint32_t gen_conv_id(void)
 {
-	if (next_conv_id == 0)
-		next_conv_id = (uint32_t)time(NULL) ^ (uint32_t)getpid();
-	next_conv_id = next_conv_id * 1103515245 + 12345;
-	return next_conv_id;
+	uint32_t conv;
+
+	/* Loop until we get a conv id that is non-zero and not already in use,
+	 * otherwise a collision would route packets to the wrong task. */
+	do {
+		if (next_conv_id == 0)
+			next_conv_id = (uint32_t)time(NULL) ^ (uint32_t)getpid();
+		next_conv_id = next_conv_id * 1103515245 + 12345;
+		conv = next_conv_id;
+	} while (conv == 0 || get_task_from_conv((IUINT32)conv, &xkcp_task_list) != NULL);
+
+	return conv;
 }
 
 static void
