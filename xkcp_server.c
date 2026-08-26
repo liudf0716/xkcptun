@@ -215,6 +215,8 @@ static int set_xkcp_listener()
 		exit(EXIT_FAILURE);
 	}
 
+	xkcp_apply_sockbuf(xkcp_fd);
+
 	if (bind(xkcp_fd, (struct sockaddr *) &sin, sizeof(sin))) {
 		debug(LOG_ERR, "xkcp_fd bind() failed %s ", strerror(errno));
 		close(xkcp_fd);

@@ -5,7 +5,7 @@
 
 #define HTTP_IP_ADDR_LEN	16
 #define	OBUF_SIZE 			4096
-#define	BUF_RECV_LEN		1500
+#define	BUF_RECV_LEN		4096
 
 #define XKCP_CLOSE_SIGNAL	"\xff\xff\xff\xff"
 #define XKCP_CLOSE_SIGNAL_LEN	4
@@ -54,6 +54,8 @@ void dump_task_list(iqueue_head *task_list, struct bufferevent *bev);
 void xkcp_set_config_param(ikcpcb *kcp);
 
 void xkcp_set_tcp_nodelay(int fd);
+
+void xkcp_apply_sockbuf(int fd);
 
 void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task);
 

@@ -143,6 +143,8 @@ int client_main_loop(void)
 		exit(EXIT_FAILURE);
 	}
 
+	xkcp_apply_sockbuf(xkcp_fd);
+
 
 	struct hostent *server = gethostbyname(xkcp_get_param()->remote_addr);
 	if (!server) {

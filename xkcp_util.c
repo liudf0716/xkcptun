@@ -185,6 +185,22 @@ void xkcp_set_tcp_nodelay(int fd)
 	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 }
 
+void xkcp_apply_sockbuf(int fd)
+{
+	struct xkcp_param *param = xkcp_get_param();
+	int bufsz = param->sock_buf;
+
+	if (bufsz <= 0)
+		return;
+
+	/* The kernel doubles the requested value and caps it at net.core.*mem_max;
+	 * failures are non-fatal, we just keep the system defaults. */
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &bufsz, sizeof(bufsz)) < 0)
+		debug(LOG_WARNING, "setsockopt SO_RCVBUF [%d] failed: %s", bufsz, strerror(errno));
+	if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &bufsz, sizeof(bufsz)) < 0)
+		debug(LOG_WARNING, "setsockopt SO_SNDBUF [%d] failed: %s", bufsz, strerror(errno));
+}
+
 
 void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
 {

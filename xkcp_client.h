@@ -7,7 +7,7 @@
 struct xkcp_task;
 
 
-#define	XKCP_RECV_BUF_LEN	1500
+#define	XKCP_RECV_BUF_LEN	4096
 #define	XKCP_SEND_BUF_LEN	10*15000
 
 void xkcp_rcv_cb(const int sock, short int which, void *arg);
