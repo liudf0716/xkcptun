@@ -221,13 +221,12 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 					} else {
 						*(int *)((char *)param + e->offset) = parse_json_int(value);
 					}
-					debug(LOG_DEBUG, "config %s set", e->name);
 					break;
 				}
 			}
 		}
 	} else {
-		debug(LOG_DEBUG, "Invalid config file");
+		debug(LOG_ERR, "Invalid config file");
 		free(buf);
 		json_value_free(obj);
 		return 1;

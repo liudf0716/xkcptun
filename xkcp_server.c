@@ -77,7 +77,7 @@ static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 }
 
 static struct xkcp_task *create_new_tcp_connection(const int xkcpfd, struct event_base *base,
-			struct sockaddr_in *from, int from_len, int conv, iqueue_head *task_list)
+			struct sockaddr_in *from, int from_len, IUINT32 conv, iqueue_head *task_list)
 {
 	struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
 	assert(param);
@@ -113,8 +113,8 @@ static struct xkcp_task *create_new_tcp_connection(const int xkcpfd, struct even
 		goto err;
 	}
 	add_task_tail(task, task_list);
-	debug(LOG_INFO, "tcp client [%d] connect to [%s]:[%d] success", bufferevent_getfd(bev),
-		  xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
+	debug(LOG_INFO, "new session conv [%u] -> [%s]:[%d]",
+		  conv, xkcp_get_param()->remote_addr, xkcp_get_param()->remote_port);
 	return task;
 err:
 	// Asserts ensure param and task are non-NULL if execution reaches here via goto.
@@ -139,45 +139,35 @@ static void accept_client_data(const int xkcpfd, struct event_base *base,
                     host, sizeof(host), serv, sizeof(serv),
                     NI_NUMERICHOST | NI_DGRAM);
 	if (nret) {
-		debug(LOG_INFO, "accept_new_client: getnameinfo error %s", strerror(errno));
+		debug(LOG_ERR, "getnameinfo error %s", strerror(errno));
 		return ;
 	}
-	
+
 	iqueue_head *task_list = NULL;
 	snprintf(key, NI_MAXHOST+NI_MAXSERV+1, "%s:%s", host, serv);
 	struct xkcp_task *task = NULL;
-	int conv = ikcp_getconv(data);
-	debug(LOG_DEBUG, "accept_new_client: [%s:%s] conv [%d] len [%d]", host, serv, conv, len);
+	IUINT32 conv = ikcp_getconv(data);
 	if (get_ptr_by_str(xkcp_hash, key, (void*)&task_list) == HASHOK) {
-		//old client	
 		task = get_task_from_conv(conv, task_list);
-		debug(LOG_DEBUG, "old client, task is %d", task!=NULL?1:0);
-		if (!task) {
-			// new tcp connection
+		if (!task)
 			task = create_new_tcp_connection(xkcpfd, base, from, from_len, conv, task_list);
-		}
 	} else {
-		// new client
 		if (!task_list) {
-			debug(LOG_DEBUG, "new client");
 			task_list = malloc(sizeof(iqueue_head));
 			iqueue_init(task_list);
 		}
 		add_ptr_by_str(xkcp_hash, key, task_list);
 		task = create_new_tcp_connection(xkcpfd, base, from, from_len, conv, task_list);
 	}
-	
+
 	if (task && task->kcp) {
 		int nret = ikcp_input(task->kcp, data, len);
-		if (nret < 0) {
-			debug(LOG_INFO, "[%d] ikcp_input failed [%d]", task->kcp->conv, nret);
-		}
+		if (nret < 0)
+			debug(LOG_INFO, "conv [%u] ikcp_input failed [%d]", task->kcp->conv, nret);
 	}
-	
-	if (task_list) {
-		debug(LOG_DEBUG, "accept_client_data: xkcp_forward_all_data ...");
+
+	if (task_list)
 		xkcp_forward_all_data(task_list);
-	}
 }
 
 static void xkcp_rcv_cb(const int sock, short int which, void *arg)

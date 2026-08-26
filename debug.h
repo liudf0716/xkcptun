@@ -46,7 +46,11 @@ extern debugconf_t debugconf;
  * @param level Debug level
  * @param format... sprintf like format string
  */
-#define debug(level, format...) _debug(__FILENAME__, __LINE__, level, format)
+#define debug(level, format...) \
+	do { \
+		if (debugconf.debuglevel >= (level)) \
+			_debug(__FILENAME__, __LINE__, level, format); \
+	} while (0)
 
 /** @internal */
 void _debug(const char *, int, int, const char *, ...);

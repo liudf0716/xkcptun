@@ -77,7 +77,6 @@ static void get_client_status(struct bufferevent *bev, void *ctx)
 
 static void get_client_info(struct bufferevent *bev, void *ctx)
 {
-	debug(LOG_DEBUG, "get_client_info  ");
 	jwHashTable *xkcp_hash = ctx;
 	struct evbuffer *output = bufferevent_get_output(bev);
 	evbuffer_add_printf(output, "client list:\n");
@@ -93,7 +92,6 @@ static void get_client_info(struct bufferevent *bev, void *ctx)
 
 static void get_server_status(struct bufferevent *bev, void *ctx)
 {
-	debug(LOG_DEBUG, "get_server_status  ");
 	jwHashTable *xkcp_hash = ctx;
 	struct evbuffer *output = bufferevent_get_output(bev);
 	evbuffer_add_printf(output, "client detail list:\n");
@@ -109,7 +107,6 @@ static void get_server_status(struct bufferevent *bev, void *ctx)
 
 static void process_user_cmd(struct bufferevent *bev, const char *cmd, void *ctx)
 {
-	debug(LOG_DEBUG, "cmd is %s", cmd);
 	if (xkcp_server_flag) {
 		for(int i = 0; server_cmd[i].command != NULL; i++) {
 			if (strcmp(cmd, server_cmd[i].command) == 0) 
@@ -133,10 +130,8 @@ static void xkcp_mon_event_cb(struct bufferevent *bev, short what, void *ctx)
 static void xkcp_mon_write_cb(struct bufferevent *bev, void *ctx)
 {
 	struct evbuffer *output = bufferevent_get_output(bev);
-    if (evbuffer_get_length(output) == 0) {
-		debug(LOG_INFO, "xkcp_mon_write_cb flush");
+    if (evbuffer_get_length(output) == 0)
         bufferevent_free(bev);
-    }
 
 }
 
@@ -144,10 +139,8 @@ static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx)
 {
 	struct evbuffer *input = bufferevent_get_input(bev);
 	int len = evbuffer_get_length(input);
-	
-	debug(LOG_DEBUG, "xkcp_mon_read_cb [%d]", len);
-	
-	if ( len > 0) { 
+
+	if (len > 0) { 
 		char *buf = malloc(len+1);
 		if (buf) {
 			memset(buf, 0, len+1);
@@ -167,8 +160,6 @@ void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	b_in = bufferevent_socket_new(base, fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
 	assert(b_in);
-	
-	debug(LOG_INFO, "accept new mon client in");
 	
 	bufferevent_setcb(b_in, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, ptr);
 	bufferevent_enable(b_in,  EV_READ | EV_WRITE);

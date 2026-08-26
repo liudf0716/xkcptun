@@ -73,22 +73,15 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 	char buf[XKCP_RECV_BUF_LEN] = {0};
 	int nrecv = 0;
 
-	int index = 0;
 	if ((nrecv = recvfrom(sock, buf, sizeof(buf)-1, 0, (struct sockaddr *) &ptr->sockaddr, (socklen_t*)&ptr->addr_len)) > 0) {
-		int conv = ikcp_getconv(buf);
+		IUINT32 conv = ikcp_getconv(buf);
 		ikcpcb *kcp = get_kcp_from_conv(conv, &xkcp_task_list);
-		debug(LOG_DEBUG, "[%d] xkcp_rcv_cb [%d] len [%d] conv [%d] kcp is [%d]",
-			  index++, sock, nrecv, conv, kcp?1:0);
 		if (kcp) {
 			int nret = ikcp_input(kcp, buf, nrecv);
-			if (nret < 0) {
-				debug(LOG_INFO, "conv [%d] ikcp_input failed [%d]", conv, nret);
-			}
-		} else {
-			debug(LOG_ERR, "xkcp_rcv_cb -- cant get kcp from peer data!!!!!!");
+			if (nret < 0)
+				debug(LOG_INFO, "conv [%u] ikcp_input failed [%d]", conv, nret);
 		}
-
-		xkcp_forward_all_data( &xkcp_task_list);
+		xkcp_forward_all_data(&xkcp_task_list);
 	}
 }
 

@@ -162,12 +162,9 @@ static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;
 	int nret = sendto(ptr->xkcpfd, buf, len, 0, (struct sockaddr *)&ptr->sockaddr, sizeof(ptr->sockaddr));
-	if (nret > 0)
-		debug(LOG_DEBUG, "xkcp_output conv [%d] fd [%d] len [%d], send datagram from %d",
-		  	kcp->conv, ptr->xkcpfd, len, nret);
-	else
-		debug(LOG_INFO, "xkcp_output conv [%d] fd [%d] send datagram error: (%s)",
-		  	kcp->conv, ptr->xkcpfd, strerror(errno));
+	if (nret < 0)
+		debug(LOG_ERR, "xkcp_output conv [%u] fd [%d] sendto: %s",
+			  kcp->conv, ptr->xkcpfd, strerror(errno));
 
 	return nret;
 }
@@ -178,8 +175,6 @@ void xkcp_set_config_param(ikcpcb *kcp)
 	kcp->output	= xkcp_output;
 	ikcp_wndsize(kcp, param->sndwnd, param->rcvwnd);
 	ikcp_nodelay(kcp, param->nodelay, param->interval, param->resend, param->nc);
-	debug(LOG_DEBUG, "sndwnd [%d] rcvwnd [%d] nodelay [%d] interval [%d] resend [%d] nc [%d]",
-		 param->sndwnd, param->rcvwnd, param->nodelay, param->interval, param->resend, param->nc);
 }
 
 static void set_tcp_no_delay(evutil_socket_t fd)
@@ -195,8 +190,8 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		if (task) {
 			puser = task->kcp->user;
-			debug(LOG_INFO, "tcp_event_cb what is [%d] socket [%d]",
-				  what, bufferevent_getfd(bev));
+			debug(LOG_INFO, "tcp closed conv [%u] what [%d] fd [%d]",
+				  task->kcp->conv, what, bufferevent_getfd(bev));
 			if (task->bev != bev) {
 				bufferevent_free(task->bev);
 				debug(LOG_ERR, "impossible here\n");
@@ -222,16 +217,16 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 	struct evbuffer *input = bufferevent_get_input(bev);
 	while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) {
 		nret = ikcp_send(kcp, buf, len);
-		debug(LOG_INFO, "xkcp_tcp_read_cb : conv [%d] read data from client [%d] len [%d] ikcp_send [%d]",
-			  kcp->conv, bufferevent_getfd(bev), len, nret);
-		memset(buf, 0, 1400);
+		if (nret < 0)
+			debug(LOG_INFO, "ikcp_send conv [%u] failed [%d] len [%d]",
+				  kcp->conv, nret, len);
 	}
 }
 
 static void dump_task(struct xkcp_task *task, struct bufferevent *bev, int index) {
 	struct evbuffer *output = bufferevent_get_output(bev);
 	evbuffer_add_printf(output,
-			"[%d]\t connection [%d]\t conv [%d]:\n --->state [%d] nrcv_buf [%d] "
+			"[%d]\t connection [%d]\t conv [%u]:\n --->state [%d] nrcv_buf [%d] "
 			"nsnd_buf [%d] nrcv_que [%d] nsnd_que [%d] rcv_nxt [%d] probe [%d] "
 			"peek  [%d] stream [%d]\n",
 			index, bufferevent_getfd(task->bev), task->kcp->conv, task->kcp->state,
@@ -261,7 +256,6 @@ void dump_task_list(iqueue_head *task_list, struct bufferevent *bev) {
 			dump_task(task, bev, ++task_list_count);
 		}
 	}
-	debug(LOG_DEBUG, "dump_task_list number [%d]", task_list_count);
 }
 
 void xkcp_forward_all_data(iqueue_head *task_list)
@@ -281,14 +275,14 @@ void xkcp_forward_data(struct xkcp_task *task)
 		int nrecv = ikcp_recv(task->kcp, obuf, OBUF_SIZE);
 		if (nrecv < 0) {
 			if (nrecv == -3)
-				debug(LOG_INFO, "obuf is small, need to extend it");
+				debug(LOG_ERR, "ikcp_recv buffer too small");
 			break;
 		}
 
 		task->last_active = iclock();
 
 		if (nrecv == XKCP_CLOSE_SIGNAL_LEN && memcmp(obuf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
-			debug(LOG_INFO, "xkcp_forward_data conv [%d] received close signal", task->kcp->conv);
+			debug(LOG_INFO, "conv [%u] received close signal", task->kcp->conv);
 			if (task->bev) {
 				bufferevent_free(task->bev);
 				task->bev = NULL;
@@ -296,30 +290,24 @@ void xkcp_forward_data(struct xkcp_task *task)
 			break;
 		}
 
-		debug(LOG_INFO, "xkcp_forward_data conv [%d] client[%d] send [%d]",
-			  task->kcp->conv, task->bev ? bufferevent_getfd(task->bev) : -1, nrecv);
 		if (task->bev)
 			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
-		else
-			debug(LOG_INFO, "this task has finished");
 	}
 }
 
 struct xkcp_task *
-get_task_from_conv(int conv, iqueue_head *task_list)
+get_task_from_conv(IUINT32 conv, iqueue_head *task_list)
 {
 	struct xkcp_task *task;
 	iqueue_foreach(task, task_list, xkcp_task_type, head)
-		if (task->kcp && task->kcp->conv == conv) {
-			debug(LOG_DEBUG, "get_task_from_conv [%d]", task->kcp->conv);
+		if (task->kcp && task->kcp->conv == conv)
 			return task;
-		}
 
 	return NULL;
 }
 
 ikcpcb *
-get_kcp_from_conv(int conv, iqueue_head *task_list)
+get_kcp_from_conv(IUINT32 conv, iqueue_head *task_list)
 {
 	struct xkcp_task *task;
 	iqueue_foreach(task, task_list, xkcp_task_type, head)
@@ -409,7 +397,7 @@ void xkcp_task_check_timeout(iqueue_head *task_list)
 
 		IUINT32 idle = now - task->last_active;
 		if (idle > timeout_ms) {
-			debug(LOG_INFO, "task conv [%d] timed out after %d seconds, closing",
+			debug(LOG_INFO, "task conv [%u] timed out after %d seconds, closing",
 				  task->kcp->conv, conn_timeout);
 
 			if (task->user_owned) {

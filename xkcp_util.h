@@ -67,9 +67,9 @@ void set_timer_interval(struct event *timeout);
 
 void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list);
 
-ikcpcb *get_kcp_from_conv(int conv, iqueue_head *task_list);
+ikcpcb *get_kcp_from_conv(IUINT32 conv, iqueue_head *task_list);
 
-struct xkcp_task *get_task_from_conv(int conv, iqueue_head *task_list);
+struct xkcp_task *get_task_from_conv(IUINT32 conv, iqueue_head *task_list);
 
 void xkcp_task_check_timeout(iqueue_head *task_list);
 

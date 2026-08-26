@@ -84,12 +84,11 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
 	assert(b_in);
 	
-	uint32_t conv = gen_conv_id();
+	IUINT32 conv = gen_conv_id();
 	ikcpcb *kcp_client 	= ikcp_create(conv, param);
 	xkcp_set_config_param(kcp_client);
-	conv++;
-	
-	debug(LOG_INFO, "accept new client [%d] in, conv [%d]", fd, conv-1);
+
+	debug(LOG_INFO, "accept new client [%d] in, conv [%u]", fd, conv);
 
 	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 	assert(task);
