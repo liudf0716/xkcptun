@@ -255,7 +255,8 @@ void dump_task_list(iqueue_head *task_list, struct bufferevent *bev) {
 	struct xkcp_task *task;
 	task_list_count = 0;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp) {
+		/* skip tasks already torn down: kcp released or bev closed */
+		if (task->kcp && task->bev) {
 			dump_task(task, bev, ++task_list_count);
 		}
 	}
