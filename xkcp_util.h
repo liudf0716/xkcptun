@@ -31,6 +31,7 @@ struct xkcp_task {
 	struct sockaddr_in	*sockaddr;
 	IUINT32				last_active;
 	int					user_owned;
+	IUINT32				conv;		/* cached kcp conv, valid after free */
 };
 
 typedef struct xkcp_task xkcp_task_type;
@@ -76,6 +77,11 @@ void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list);
 ikcpcb *get_kcp_from_conv(IUINT32 conv, iqueue_head *task_list);
 
 struct xkcp_task *get_task_from_conv(IUINT32 conv, iqueue_head *task_list);
+
+/* O(1) conv -> task lookup backed by a hash. peer scopes the key on the
+ * server (per-client isolation); pass NULL on the client. Falls back to
+ * NULL when the hash is not yet built. */
+struct xkcp_task *xkcp_find_task(IUINT32 conv, const struct sockaddr_in *peer);
 
 void xkcp_task_check_timeout(iqueue_head *task_list);
 

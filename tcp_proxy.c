@@ -60,7 +60,7 @@ static uint32_t gen_conv_id(void)
 			next_conv_id = (uint32_t)time(NULL) ^ (uint32_t)getpid();
 		next_conv_id = next_conv_id * 1103515245 + 12345;
 		conv = next_conv_id;
-	} while (conv == 0 || get_task_from_conv((IUINT32)conv, &xkcp_task_list) != NULL);
+	} while (conv == 0 || xkcp_find_task((IUINT32)conv, NULL) != NULL);
 
 	return conv;
 }

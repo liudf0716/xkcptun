@@ -66,7 +66,7 @@ static struct fec_conn *g_fec = NULL;
 static void client_handle_packet(char *buf, int nrecv)
 {
 	IUINT32 conv = ikcp_getconv(buf);
-	struct xkcp_task *task = get_task_from_conv(conv, &xkcp_task_list);
+	struct xkcp_task *task = xkcp_find_task(conv, NULL);
 	if (!task || !task->kcp)
 		return;
 

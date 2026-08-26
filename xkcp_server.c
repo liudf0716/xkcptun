@@ -196,7 +196,8 @@ static void route_kcp_packet(const int xkcpfd, struct event_base *base,
 		 ntohl(from->sin_addr.s_addr), ntohs(from->sin_port));
 
 	if (get_ptr_by_str(xkcp_hash, key, (void*)&task_list) == HASHOK) {
-		task = get_task_from_conv(conv, task_list);
+		/* O(1) hash lookup scoped to this peer */
+		task = xkcp_find_task(conv, from);
 		if (!task)
 			task = create_new_tcp_connection(xkcpfd, base, from, from_len, conv, task_list);
 	} else {

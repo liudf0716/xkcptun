@@ -45,6 +45,7 @@
 
 #include "ikcp.h"
 #include "fec.h"
+#include "jwHash.h"
 #include "xkcp_util.h"
 #include "xkcp_config.h"
 #include "xkcp_mon.h"
@@ -145,11 +146,37 @@ __list_del(iqueue_head *prev, iqueue_head *next)
 	prev->next = next;
 }
 
+/* conv -> task index: avoids the O(n) list scan per UDP packet.
+ * Keys are scoped ("c:<conv>" client-side, "s:<ip>:<port>:<conv>" on the
+ * server) so identical convs from different peers can never collide. */
+static jwHashTable *conv_hash = NULL;
+
+static void conv_build_key(char *key, size_t klen, IUINT32 conv,
+			   const struct sockaddr_in *peer)
+{
+	if (peer)
+		snprintf(key, klen, "s:%u:%u:%u",
+			 ntohl(peer->sin_addr.s_addr), ntohs(peer->sin_port),
+			 conv);
+	else
+		snprintf(key, klen, "c:%u", conv);
+}
+
 void
 add_task_tail(struct xkcp_task *task, iqueue_head *head) {
 	iqueue_head *entry = &task->head;
 
 	__list_add(entry, head->prev, head);
+
+	if (!task->kcp)
+		return;
+	task->conv = task->kcp->conv;
+	if (!conv_hash)
+		conv_hash = create_hash(1024);
+	char key[48];
+	conv_build_key(key, sizeof(key), task->conv,
+		       task->user_owned ? task->sockaddr : NULL);
+	add_ptr_by_str(conv_hash, key, task);
 }
 
 void
@@ -157,6 +184,13 @@ del_task(struct xkcp_task *task) {
 	iqueue_head *entry = &task->head;
 
 	__list_del(entry->prev, entry->next);
+
+	if (conv_hash && task->kcp) {
+		char key[48];
+		conv_build_key(key, sizeof(key), task->conv,
+			       task->user_owned ? task->sockaddr : NULL);
+		del_by_str(conv_hash, key);
+	}
 }
 
 struct fec_send_ctx {
@@ -377,6 +411,20 @@ get_task_from_conv(IUINT32 conv, iqueue_head *task_list)
 		if (task->kcp && task->kcp->conv == conv)
 			return task;
 
+	return NULL;
+}
+
+struct xkcp_task *
+xkcp_find_task(IUINT32 conv, const struct sockaddr_in *peer)
+{
+	char key[48];
+	struct xkcp_task *task = NULL;
+
+	if (!conv_hash)
+		return NULL;
+	conv_build_key(key, sizeof(key), conv, peer);
+	if (get_ptr_by_str(conv_hash, key, (void **)&task) == HASHOK)
+		return (task && task->kcp) ? task : NULL;
 	return NULL;
 }
 
