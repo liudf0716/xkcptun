@@ -104,10 +104,44 @@ void xkcp_server_drop_peer_fec(const char *key)
 	fec_conn_free(f);
 }
 
+/* peers silent longer than this get their codec freed; must exceed
+ * conn_timeout so a live-but-idle session never loses its decoder */
+#define FEC_PEER_IDLE_MS	(120 * 1000)
+
+/* Free FEC codecs for peers that stopped sending. Without this, one
+ * codec per ephemeral NAT port accumulates forever. Walks the hash
+ * buckets directly because jwHash's iterator does not expose keys. */
+static void sweep_idle_peer_fec(void)
+{
+	size_t b;
+
+	if (!fec_hash)
+		return;
+	for (b = 0; b < fec_hash->buckets; b++) {
+		jwHashEntry **pp = &fec_hash->bucket[b];
+		while (*pp) {
+			jwHashEntry *e = *pp;
+			struct fec_conn *f = e->value.ptrValue;
+
+			if (f && fec_conn_idle_ms(f) > FEC_PEER_IDLE_MS) {
+				*pp = e->next;
+				debug(LOG_INFO, "reclaimed idle FEC codec for [%s]",
+				      e->key.strValue);
+				fec_conn_free(f);
+				free(e->key.strValue);
+				free(e);
+				continue;
+			}
+			pp = &e->next;
+		}
+	}
+}
+
 static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
 	hash_iterator(xkcp_hash, (void*)xkcp_update_task_list, HASHPTR);
-	
+	sweep_idle_peer_fec();
+
 	set_timer_interval(arg);
 }
 

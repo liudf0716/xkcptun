@@ -36,6 +36,9 @@ struct fec_conn *fec_conn_new(int datashard, int parityshard, int shard_cap);
 
 void fec_conn_free(struct fec_conn *c);
 
+/* milliseconds since the codec last saw a packet (idle detection) */
+uint32_t fec_conn_idle_ms(const struct fec_conn *c);
+
 /* Called once per outgoing UDP datagram. The buffers are only valid for
  * the duration of the call. */
 typedef void (*fec_pkt_cb)(void *user, const char *pkt, int len);

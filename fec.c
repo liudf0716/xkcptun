@@ -126,6 +126,7 @@ struct fec_conn {
 	int k, r, n;
 	int cap;		/* max shard payload bytes */
 	uint16_t next_gid;
+	uint32_t tick;		/* last encode/decode time, for idle detection */
 
 	uint8_t *coef;		/* r*k cauchy coefficients */
 
@@ -147,6 +148,8 @@ struct fec_conn *fec_conn_new(int datashard, int parityshard, int shard_cap)
 
 	if (datashard < 1 || datashard > FEC_SHARD_MAX ||
 	    parityshard < 0 || parityshard > FEC_SHARD_MAX ||
+	    /* the decoder tracks stored shards in a 64-bit bitmap */
+	    datashard + parityshard > 64 ||
 	    shard_cap <= 0 || shard_cap > 60000)
 		return NULL;
 
@@ -198,9 +201,17 @@ void fec_conn_free(struct fec_conn *c)
 			for (j = 0; j < c->n; j++)
 				free(g->shard[j]);
 		free(g->shard);
+		free(g->slen);
+		free(g->olen);
 	}
 	free(c->coef);
 	free(c);
+}
+
+/* milliseconds since the codec last encoded or decoded a packet */
+uint32_t fec_conn_idle_ms(const struct fec_conn *c)
+{
+	return now_ms() - c->tick;
 }
 
 /* ------------------------------------------------------------------ */
@@ -216,24 +227,21 @@ void fec_conn_encode(struct fec_conn *c, const char *data, int len,
 	if (!c || !out)
 		return;
 
+	c->tick = now_ms();
 
+	if (len > c->cap || len <= 0) {
+		/* cannot happen with correct mtu config; drop instead of
+		 * corrupting the group */
+		static unsigned long dropped = 0;
+		fprintf(stderr, "fec: segment %d exceeds shard capacity %d, "
+			"dropped (%lu total)\n", len, c->cap, ++dropped);
+		return;
+	}
 
 	if (c->tx_cnt == 0)
 		gid = c->next_gid++;
 	else
 		gid = (uint16_t)(c->next_gid - 1);
-
-	if (len > c->cap || len <= 0) {
-		/* cannot happen with correct mtu config; drop instead of
-		 * corrupting the group */
-		static int warned2 = 0;
-		if (!warned2) {
-			fprintf(stderr, "fec: segment %d exceeds shard capacity %d, dropped\n",
-				len, c->cap);
-			warned2 = 1;
-		}
-		return;
-	}
 
 	/* stage the shard and emit it immediately: no added latency.
 	 * payload layout: [2-byte real length][packet bytes]; the length
@@ -420,13 +428,16 @@ static void grp_deliver_shard(struct fec_conn *c, struct fec_grp *g, int j,
 		out(user, (const char *)g->shard[j] + FEC_LEN_PREFIX, plen);
 }
 
-/* reconstruct missing data shards and deliver them */
+/* reconstruct missing data shards and deliver them. On transient
+ * failure (not enough parity yet, or allocation failure) the group is
+ * left pending so reconstruction is retried when more shards arrive. */
 static void grp_finish(struct fec_conn *c, struct fec_grp *g,
 		       fec_pkt_cb out, void *user)
 {
 	int missing[FEC_SHARD_MAX], m = 0;
 	int par_rows[FEC_SHARD_MAX], np = 0;
 	int j, a, b, w, width = 0;
+	uint8_t *M, *rhs;
 
 	for (j = 0; j < c->k; j++) {
 		if (g->bitmap & ((uint64_t)1 << j))
@@ -440,65 +451,77 @@ static void grp_finish(struct fec_conn *c, struct fec_grp *g,
 				width = g->olen[j];	/* parity carries group width */
 		}
 
-	if (m > 0) {
-		uint8_t *M, *rhs;
+	if (m == 0)
+		return;	/* every data shard arrived on its own */
+	if (m > np || width <= 0)
+		return;	/* not decodable yet; more parity may still arrive */
 
-		if (m > np || width <= 0)
-			goto deliver_none;	/* not decodable; drop */
+	M = malloc((size_t)m * m);
+	rhs = malloc((size_t)m * width);
+	if (!M || !rhs) {
+		free(M);
+		free(rhs);
+		return;	/* keep the group pending so reconstruction is retried */
+	}
 
-		M = malloc((size_t)m * m);
-		rhs = malloc((size_t)m * width);
-		if (!M || !rhs) {
-			free(M);
-			free(rhs);
-			goto deliver_none;
+	for (a = 0; a < m; a++) {
+		int pr = par_rows[a];
+		memset(rhs + (size_t)a * width, 0, width);
+		for (b = 0; b < m; b++)
+			M[a * m + b] = c->coef[pr * c->k + missing[b]];
+		/* subtract received data contribution from parity */
+		for (j = 0; j < c->k; j++) {
+			uint8_t cf;
+			if (!(g->bitmap & ((uint64_t)1 << j)))
+				continue;
+			cf = c->coef[pr * c->k + j];
+			if (!cf)
+				continue;
+			for (w = 0; w < g->slen[j]; w++)
+				rhs[(size_t)a * width + w] ^=
+					gmul(cf, g->shard[j][w]);
 		}
+		/* xor in the parity payload itself */
+		for (w = 0; w < width; w++)
+			rhs[(size_t)a * width + w] ^= g->shard[c->k + pr][w];
+	}
 
-		for (a = 0; a < m; a++) {
-			int pr = par_rows[a];
-			memset(rhs + (size_t)a * width, 0, width);
-			for (b = 0; b < m; b++)
-				M[a * m + b] = c->coef[pr * c->k + missing[b]];
-			/* subtract received data contribution from parity */
-			for (j = 0; j < c->k; j++) {
-				uint8_t cf;
-				if (!(g->bitmap & ((uint64_t)1 << j)))
-					continue;
-				cf = c->coef[pr * c->k + j];
-				if (!cf)
-					continue;
-				for (w = 0; w < g->slen[j]; w++)
-					rhs[(size_t)a * width + w] ^=
-						gmul(cf, g->shard[j][w]);
+	if (gauss_solve(M, rhs, m, width) == 0) {
+		/* reserve all reconstructed buffers first so an allocation
+		 * failure leaves the group pending instead of half-delivered */
+		int ok = 1;
+		for (a = 0; a < m && ok; a++) {
+			g->shard[missing[a]] = malloc(width);
+			if (!g->shard[missing[a]])
+				ok = 0;
+		}
+		if (ok) {
+			for (a = 0; a < m; a++) {
+				j = missing[a];
+				memcpy(g->shard[j], rhs + (size_t)a * width, width);
+				g->slen[j] = (uint16_t)width;
+				g->olen[j] = (uint16_t)width;
+				g->bitmap |= (uint64_t)1 << j;
+				grp_deliver_shard(c, g, j, out, user);
 			}
-			/* xor in the parity payload itself */
-			for (w = 0; w < width; w++)
-				rhs[(size_t)a * width + w] ^= g->shard[c->k + pr][w];
-		}	if (gauss_solve(M, rhs, m, width) == 0) {
-		for (a = 0; a < m; a++) {
-			j = missing[a];
-			g->shard[j] = malloc(width);
-			if (!g->shard[j])
-				break;
-			memcpy(g->shard[j], rhs + (size_t)a * width, width);
-			g->slen[j] = (uint16_t)width;
-			g->olen[j] = (uint16_t)width;
-			g->bitmap |= (uint64_t)1 << j;
-			grp_deliver_shard(c, g, j, out, user);
+		} else {
+			for (a = 0; a < m; a++) {
+				j = missing[a];
+				if (g->shard[j]) {
+					free(g->shard[j]);
+					g->shard[j] = NULL;
+				}
+			}
 		}
 	}
 	free(M);
 	free(rhs);
-	}
-
-deliver_none:
-	g->done = 1;
 }
 
 void fec_conn_decode(struct fec_conn *c, const char *pkt, int len,
 		     fec_pkt_cb out, void *user)
 {
-	int parity;
+	int parity, i;
 	uint8_t idx;
 	uint16_t gid, size, olen;
 	struct fec_grp *g;
@@ -521,6 +544,24 @@ void fec_conn_decode(struct fec_conn *c, const char *pkt, int len,
 		return;
 
 	now = now_ms();
+	c->tick = now;
+
+	/* drop pending groups that stayed incomplete past the TTL so their
+	 * buffers and gid dedup state don't linger until the ring recycles */
+	for (i = 0; i < FEC_RX_GROUPS; i++) {
+		struct fec_grp *e = &c->grp[i];
+		if (e->shard && !e->done && now - e->tick > FEC_GRP_TTL_MS) {
+			int j;
+			for (j = 0; j < c->n; j++) {
+				free(e->shard[j]);
+				e->shard[j] = NULL;
+			}
+			e->bitmap = 0;
+			e->cnt = 0;
+			e->done = 1;
+		}
+	}
+
 	g = grp_find(c, gid);
 	if (!g) {
 		g = grp_create(c, gid, now);
@@ -550,6 +591,14 @@ void fec_conn_decode(struct fec_conn *c, const char *pkt, int len,
 	if (!parity)
 		grp_deliver_shard(c, g, idx, out, user);
 
-	if (g->cnt >= c->k)
+	if (g->cnt >= c->k) {
+		uint64_t mask = (c->k >= 64) ? ~(uint64_t)0
+					     : (((uint64_t)1 << c->k) - 1);
+
 		grp_finish(c, g, out, user);
+		/* the group is finished once every data shard has been
+		 * delivered; otherwise it stays pending for late parity */
+		if ((g->bitmap & mask) == mask)
+			g->done = 1;
+	}
 }

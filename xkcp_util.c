@@ -187,9 +187,15 @@ del_task(struct xkcp_task *task) {
 
 	if (conv_hash && task->kcp) {
 		char key[48];
+		struct xkcp_task *cur = NULL;
+
 		conv_build_key(key, sizeof(key), task->conv,
 			       task->user_owned ? task->sockaddr : NULL);
-		del_by_str(conv_hash, key);
+		/* only drop the index when it still points at us: a new
+		 * task with the same key may have replaced our entry */
+		if (get_ptr_by_str(conv_hash, key, (void **)&cur) == HASHOK &&
+		    cur == task)
+			del_by_str(conv_hash, key);
 	}
 }
 
@@ -201,7 +207,10 @@ struct fec_send_ctx {
 static void fec_send_pkt(void *user, const char *pkt, int len)
 {
 	struct fec_send_ctx *ctx = user;
-	sendto(ctx->fd, pkt, len, 0, (struct sockaddr *)ctx->addr, sizeof(*ctx->addr));
+
+	if (sendto(ctx->fd, pkt, len, 0, (struct sockaddr *)ctx->addr,
+		   sizeof(*ctx->addr)) < 0)
+		debug(LOG_ERR, "fec sendto: %s", strerror(errno));
 }
 
 static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
@@ -363,6 +372,11 @@ void xkcp_forward_data(struct xkcp_task *task)
 	char sbuf[OBUF_SIZE];
 	IUINT32 now = iclock();
 
+	/* a backed-up connection is still active: update liveness here too,
+	 * or the timeout sweep would kill it while it waits for the slow
+	 * downstream to drain */
+	task->last_active = now;
+
 	if (task->bev &&
 	    evbuffer_get_length(bufferevent_get_output(task->bev)) >
 	    XKCP_TCP_OUTBUF_LIMIT)
@@ -393,8 +407,6 @@ void xkcp_forward_data(struct xkcp_task *task)
 			free(heapbuf);
 			break;
 		}
-
-		task->last_active = now;
 
 		if (nrecv == XKCP_CLOSE_SIGNAL_LEN && memcmp(obuf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
 			debug(LOG_INFO, "conv [%u] received close signal", task->kcp->conv);
