@@ -137,9 +137,22 @@ static void sweep_idle_peer_fec(void)
 	}
 }
 
+/* FEC periodic tick for every session: parity flush for stale partial
+ * groups and loss-rate adaptation. Duplicate ticks for tasks sharing a
+ * peer codec are harmless (the partial group closes on the first one). */
+static void server_tick_task_list(iqueue_head *task_list)
+{
+	struct xkcp_task *task;
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		if (task->kcp)
+			xkcp_fec_tick((struct xkcp_proxy_param *)task->kcp->user);
+	}
+}
+
 static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
 	hash_iterator(xkcp_hash, (void*)xkcp_update_task_list, HASHPTR);
+	hash_iterator(xkcp_hash, (void*)server_tick_task_list, HASHPTR);
 	sweep_idle_peer_fec();
 
 	set_timer_interval(arg);

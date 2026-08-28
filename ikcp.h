@@ -288,6 +288,9 @@ struct IKCPCB
 	IUINT32 nodelay, updated;
 	IUINT32 ts_probe, probe_wait;
 	IUINT32 dead_link, incr;
+	IUINT32 snd_pkts, loss_pkts;	/* stats: segments sent / retransmitted */
+	IUINT32 loss_wnd;		/* loss-driven AIMD send window (pkts), 0 = off */
+	IUINT32 loss_ts, grow_ts;	/* AIMD decrease/increase throttle stamps */
 	struct IQUEUEHEAD snd_queue;
 	struct IQUEUEHEAD rcv_queue;
 	struct IQUEUEHEAD snd_buf;

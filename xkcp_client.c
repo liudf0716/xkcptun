@@ -61,6 +61,7 @@ IQUEUE_HEAD(xkcp_task_list);
 
 static short mport = 9086;
 static struct fec_conn *g_fec = NULL;
+static struct xkcp_proxy_param *g_client_pp = NULL;
 
 /* deliver one raw KCP packet (post-FEC-decode) to the session layer */
 static void client_handle_packet(char *buf, int nrecv)
@@ -87,6 +88,7 @@ void
 timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
 	xkcp_timer_event_cb(arg, &xkcp_task_list);
+	xkcp_fec_tick(g_client_pp);
 }
 
 void
@@ -195,6 +197,7 @@ int client_main_loop(void)
 	proxy_param.sockaddr.sin_port		= htons(xkcp_get_param()->remote_port);
 	memcpy((char *)&proxy_param.sockaddr.sin_addr.s_addr, (char *)server->h_addr, server->h_length);
 	proxy_param.fec = g_fec;
+	g_client_pp = &proxy_param;
 	listener = set_tcp_proxy_listener(base, &proxy_param);
 
 	mlistener = set_xkcp_mon_listener(base, mport, &xkcp_task_list);

@@ -85,6 +85,9 @@ struct xkcp_task *xkcp_find_task(IUINT32 conv, const struct sockaddr_in *peer);
 
 void xkcp_task_check_timeout(iqueue_head *task_list);
 
+/* periodic FEC tick for one session's peer codec (parity flush + adaptation) */
+void xkcp_fec_tick(struct xkcp_proxy_param *ptr);
+
 int xkcp_main(int argc, char **argv);
 
 void xkcp_setup_signals(struct event_base *base);

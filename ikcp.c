@@ -286,6 +286,11 @@ ikcpcb* ikcp_create(IUINT32 conv, void *user)
 	kcp->fastresend = 0;
 	kcp->nocwnd = 0;
 	kcp->xmit = 0;
+	kcp->snd_pkts = 0;
+	kcp->loss_pkts = 0;
+	kcp->loss_wnd = 0;
+	kcp->loss_ts = 0;
+	kcp->grow_ts = 0;
     kcp->dead_link = IKCP_DEADLINK;
 	kcp->output = NULL;
 	kcp->writelog = NULL;
@@ -875,6 +880,16 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 				kcp->incr = kcp->rmt_wnd * mss;
 			}
 		}
+		/* loss-driven AIMD: additive increase, at most once per RTT,
+		 * slow-start style while far below the configured window */
+		if (kcp->loss_wnd && kcp->loss_wnd < kcp->snd_wnd) {
+			IINT32 rtt = (kcp->rx_srtt > 0) ? kcp->rx_srtt : 200;
+			if (_itimediff(kcp->current, kcp->grow_ts) >= rtt) {
+				kcp->loss_wnd += (kcp->loss_wnd < kcp->snd_wnd / 2)
+						 ? kcp->loss_wnd / 2 + 1 : 1;
+				kcp->grow_ts = kcp->current;
+			}
+		}
 	}
 
 	return 0;
@@ -997,6 +1012,8 @@ void ikcp_flush(ikcpcb *kcp)
 	// calculate window size
 	cwnd = _imin_(kcp->snd_wnd, kcp->rmt_wnd);
 	if (kcp->nocwnd == 0) cwnd = _imin_(kcp->cwnd, cwnd);
+	/* loss-driven AIMD applies even in no-congestion-control mode */
+	if (kcp->loss_wnd) cwnd = _imin_(kcp->loss_wnd, cwnd);
 
 	// move data from snd_queue to snd_buf
 	while (_itimediff(kcp->snd_nxt, kcp->snd_una + cwnd) < 0) {
@@ -1058,6 +1075,9 @@ void ikcp_flush(ikcpcb *kcp)
 
 		if (needsend) {
 			int size, need;
+			kcp->snd_pkts++;
+			if (segment->xmit > 1)
+				kcp->loss_pkts++;
 			segment->ts = current;
 			segment->wnd = seg.wnd;
 			segment->una = kcp->rcv_nxt;
@@ -1105,6 +1125,19 @@ void ikcp_flush(ikcpcb *kcp)
 			kcp->ssthresh = IKCP_THRESH_MIN;
 		kcp->cwnd = 1;
 		kcp->incr = kcp->mss;
+	}
+
+	/* loss-driven AIMD: multiplicative decrease, throttled to once per
+	 * RTT so a burst of retransmits in a single flush doesn't collapse
+	 * the window */
+	if (kcp->loss_wnd && (change || lost)) {
+		IINT32 rtt = (kcp->rx_srtt > 0) ? kcp->rx_srtt : 200;
+		if (_itimediff(current, kcp->loss_ts) >= rtt) {
+			kcp->loss_wnd = kcp->loss_wnd * 3 / 4;
+			if (kcp->loss_wnd < 8)
+				kcp->loss_wnd = 8;
+			kcp->loss_ts = current;
+		}
 	}
 
 	if (kcp->cwnd < 1) {

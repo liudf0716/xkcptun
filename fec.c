@@ -124,9 +124,14 @@ struct fec_grp {
 
 struct fec_conn {
 	int k, r, n;
+	int r_eff;		/* parity actually emitted now, <= r */
 	int cap;		/* max shard payload bytes */
 	uint16_t next_gid;
 	uint32_t tick;		/* last encode/decode time, for idle detection */
+	uint32_t grp_ts;	/* first shard time of the current tx group */
+	uint32_t adapt_ts;	/* last parity-ratio re-adaptation */
+	uint32_t rx_shards;	/* shards received since last adaptation */
+	uint32_t rx_recovered;	/* shards reconstructed from parity */
 
 	uint8_t *coef;		/* r*k cauchy coefficients */
 
@@ -160,6 +165,7 @@ struct fec_conn *fec_conn_new(int datashard, int parityshard, int shard_cap)
 	c->k = datashard;
 	c->r = parityshard;
 	c->n = c->k + c->r;
+	c->r_eff = c->r;
 	c->cap = shard_cap;
 
 	c->coef = malloc((size_t)c->r * c->k);
@@ -218,11 +224,13 @@ uint32_t fec_conn_idle_ms(const struct fec_conn *c)
 /* encoding                                                            */
 /* ------------------------------------------------------------------ */
 
+static void fec_emit_parity(struct fec_conn *c, fec_pkt_cb out, void *user);
+
 void fec_conn_encode(struct fec_conn *c, const char *data, int len,
 		     fec_pkt_cb out, void *user)
 {
 	uint16_t gid;
-	int i, j, w, width;
+	int i;
 
 	if (!c || !out)
 		return;
@@ -238,9 +246,10 @@ void fec_conn_encode(struct fec_conn *c, const char *data, int len,
 		return;
 	}
 
-	if (c->tx_cnt == 0)
+	if (c->tx_cnt == 0) {
 		gid = c->next_gid++;
-	else
+		c->grp_ts = now_ms();
+	} else
 		gid = (uint16_t)(c->next_gid - 1);
 
 	/* stage the shard and emit it immediately: no added latency.
@@ -257,25 +266,33 @@ void fec_conn_encode(struct fec_conn *c, const char *data, int len,
 	out(user, (const char *)c->tx_shard[i], FEC_HDR_SIZE + c->tx_len[i]);
 	c->tx_cnt++;
 
-	if (c->tx_cnt < c->k)
-		return;
+	if (c->tx_cnt >= c->k)
+		fec_emit_parity(c, out, user);
+}
 
-	/* group complete: pad shards to the max length and generate parity */
-	width = 0;
+/* Generate parity for the staged tx group (partial groups included),
+ * emit it, and close the group. Uses the first r_eff cauchy rows; the
+ * decoder derives each parity row purely from its shard index, so a
+ * group carrying fewer parity rows than the original ratio stays
+ * decodable. */
+static void fec_emit_parity(struct fec_conn *c, fec_pkt_cb out, void *user)
+{
+	int i, j, w, width = 0;
+
 	for (i = 0; i < c->k; i++)
 		if (c->tx_len[i] > width)
 			width = c->tx_len[i];
 
-	if (c->r > 0) {
-		uint8_t *par = malloc((size_t)c->r * (FEC_HDR_SIZE + width));
+	if (c->r_eff > 0) {
+		uint8_t *par = malloc((size_t)c->r_eff * (FEC_HDR_SIZE + width));
 		if (par) {
 			/* zero each parity payload region ([hdr][payload] blocks) */
-			for (i = 0; i < c->r; i++)
+			for (i = 0; i < c->r_eff; i++)
 				memset(par + (size_t)i * (FEC_HDR_SIZE + width) + FEC_HDR_SIZE,
 				       0, width);
 
 			for (j = 0; j < c->k; j++) {
-				for (i = 0; i < c->r; i++) {
+				for (i = 0; i < c->r_eff; i++) {
 					uint8_t cf = c->coef[i * c->k + j];
 					uint8_t *dst = par + (size_t)i * (FEC_HDR_SIZE + width) + FEC_HDR_SIZE;
 					const uint8_t *src = c->tx_shard[j] + FEC_HDR_SIZE;
@@ -286,9 +303,9 @@ void fec_conn_encode(struct fec_conn *c, const char *data, int len,
 				}
 			}
 
-			for (i = 0; i < c->r; i++) {
+			for (i = 0; i < c->r_eff; i++) {
 				uint8_t *p = par + (size_t)i * (FEC_HDR_SIZE + width);
-				fec_pack_hdr(p, 1, (uint8_t)(c->k + i), gid,
+				fec_pack_hdr(p, 1, (uint8_t)(c->k + i), (uint16_t)(c->next_gid - 1),
 					     (uint16_t)width, (uint16_t)width);
 				out(user, (const char *)p, FEC_HDR_SIZE + width);
 			}
@@ -297,6 +314,41 @@ void fec_conn_encode(struct fec_conn *c, const char *data, int len,
 	}
 
 	c->tx_cnt = 0;
+}
+
+void fec_conn_tick(struct fec_conn *c, fec_pkt_cb out, void *user)
+{
+	uint32_t now;
+
+	if (!c || !out)
+		return;
+
+	now = now_ms();
+
+	/* re-adapt the parity ratio every 5s from the observed share of
+	 * shards that had to be reconstructed (i.e. were lost in transit) */
+	if (now - c->adapt_ts >= 5000) {
+		c->adapt_ts = now;
+		if (c->rx_shards >= 200) {
+			int rate = c->rx_recovered * 100 / c->rx_shards;
+			int want = (rate * c->k * 15 + 999) / 1000;	/* ~1.5x loss */
+
+			if (want > c->r)
+				want = c->r;
+			/* move one shard at a time for stability */
+			if (want > c->r_eff && c->r_eff < c->r)
+				c->r_eff++;
+			else if (want < c->r_eff && c->r_eff > 0)
+				c->r_eff--;
+			c->rx_shards = 0;
+			c->rx_recovered = 0;
+		}
+	}
+
+	/* a stale partial group gets its parity now instead of never:
+	 * this is what protects small interactive flows */
+	if (c->tx_cnt > 0 && now - c->grp_ts >= FEC_PARTIAL_FLUSH_MS)
+		fec_emit_parity(c, out, user);
 }
 
 /* ------------------------------------------------------------------ */
@@ -487,6 +539,7 @@ static void grp_finish(struct fec_conn *c, struct fec_grp *g,
 	}
 
 	if (gauss_solve(M, rhs, m, width) == 0) {
+		c->rx_recovered += m;
 		/* reserve all reconstructed buffers first so an allocation
 		 * failure leaves the group pending instead of half-delivered */
 		int ok = 1;
@@ -545,6 +598,7 @@ void fec_conn_decode(struct fec_conn *c, const char *pkt, int len,
 
 	now = now_ms();
 	c->tick = now;
+	c->rx_shards++;
 
 	/* drop pending groups that stayed incomplete past the TTL so their
 	 * buffers and gid dedup state don't linger until the ring recycles */

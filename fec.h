@@ -27,6 +27,9 @@
 #define FEC_RX_GROUPS	64
 /* pending groups older than this are dropped */
 #define FEC_GRP_TTL_MS	3000
+/* a partial tx group older than this gets its parity flushed so small
+ * interactive flows get loss protection without filling the group */
+#define FEC_PARTIAL_FLUSH_MS	100
 
 struct fec_conn;
 
@@ -57,5 +60,12 @@ void fec_conn_encode(struct fec_conn *c, const char *data, int len,
  * upstream while avoiding head-of-line blocking. */
 void fec_conn_decode(struct fec_conn *c, const char *pkt, int len,
 		     fec_pkt_cb out, void *user);
+
+/* Call periodically (every timer tick). Two jobs:
+ *  - if the current tx group is partially filled and older than
+ *    FEC_PARTIAL_FLUSH_MS, emit its parity immediately and close it;
+ *  - re-estimate the parity ratio from the observed post-FEC recovery
+ *    rate (only when the ratio is below the configured parityshard). */
+void fec_conn_tick(struct fec_conn *c, fec_pkt_cb out, void *user);
 
 #endif

@@ -213,6 +213,17 @@ static void fec_send_pkt(void *user, const char *pkt, int len)
 		debug(LOG_ERR, "fec sendto: %s", strerror(errno));
 }
 
+/* periodic FEC tick: flush parity for stale partial groups and adapt the
+ * parity ratio to the observed loss rate */
+void xkcp_fec_tick(struct xkcp_proxy_param *ptr)
+{
+	if (!ptr || !ptr->fec)
+		return;
+
+	struct fec_send_ctx ctx = { ptr->xkcpfd, &ptr->sockaddr };
+	fec_conn_tick(ptr->fec, fec_send_pkt, &ctx);
+}
+
 static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;
@@ -238,6 +249,8 @@ void xkcp_set_config_param(ikcpcb *kcp)
 	struct xkcp_param *param = xkcp_get_param();
 	kcp->output	= xkcp_output;
 	ikcp_wndsize(kcp, param->sndwnd, param->rcvwnd);
+	/* loss-driven AIMD starts unrestricted and adapts down on loss */
+	kcp->loss_wnd = (param->loss_ctrl != 0) ? kcp->snd_wnd : 0;
 	ikcp_nodelay(kcp, param->nodelay, param->interval, param->resend, param->nc);
 	/* FEC frames add an 8-byte header to every datagram: shrink the KCP
 	 * mtu accordingly so framed packets stay within the path MTU. */
@@ -318,14 +331,22 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 
 static void dump_task(struct xkcp_task *task, struct bufferevent *bev, int index) {
 	struct evbuffer *output = bufferevent_get_output(bev);
+	ikcpcb *kcp = task->kcp;
+	IUINT32 inflight = kcp->snd_nxt - kcp->snd_una;
+	int retrans_pct = kcp->snd_pkts > 0
+			  ? (int)(kcp->loss_pkts * 100 / kcp->snd_pkts) : 0;
 	evbuffer_add_printf(output,
 			"[%d]\t connection [%d]\t conv [%u]:\n --->state [%d] nrcv_buf [%d] "
 			"nsnd_buf [%d] nrcv_que [%d] nsnd_que [%d] rcv_nxt [%d] probe [%d] "
-			"peek  [%d] stream [%d]\n",
-			index, bufferevent_getfd(task->bev), task->kcp->conv, task->kcp->state,
-			task->kcp->nrcv_buf, task->kcp->nsnd_buf, task->kcp->nrcv_que,
-			task->kcp->nsnd_que, task->kcp->rcv_nxt, task->kcp->probe,
-			ikcp_peeksize(task->kcp), task->kcp->stream);
+			"peek  [%d] stream [%d]\n"
+			"      srtt [%d ms] rto [%d ms] inflight [%u] cwnd [%u] loss_wnd [%u] "
+			"snd_pkts [%u] loss_pkts [%u] retrans [%d%%]\n",
+			index, bufferevent_getfd(task->bev), kcp->conv, kcp->state,
+			kcp->nrcv_buf, kcp->nsnd_buf, kcp->nrcv_que,
+			kcp->nsnd_que, kcp->rcv_nxt, kcp->probe,
+			ikcp_peeksize(kcp), kcp->stream,
+			kcp->rx_srtt, kcp->rx_rto, inflight, kcp->cwnd, kcp->loss_wnd,
+			kcp->snd_pkts, kcp->loss_pkts, retrans_pct);
 }
 
 int get_task_list_size(iqueue_head *task_list)

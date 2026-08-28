@@ -45,6 +45,7 @@ struct xkcp_param {
 	int		interval;		// interval
 	int 	resend;			// resend
 	int 	nc; 			// no congestion
+	int		loss_ctrl;		// losscntl: loss-driven AIMD send window (1=on)
 	int		fec;			// fec enable (1=frame all datagrams)
 	int 	sock_buf;		// sockbuf
 	int 	keepalive;		// keepalive
