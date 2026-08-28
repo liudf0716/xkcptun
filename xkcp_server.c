@@ -260,7 +260,11 @@ static void route_kcp_packet(const int xkcpfd, struct event_base *base,
 		if (ikcp_input(task->kcp, data, len) < 0)
 			debug(LOG_INFO, "conv [%u] ikcp_input failed", task->kcp->conv);
 		xkcp_forward_data(task);
-		ikcp_flush(task->kcp);
+		/* No ikcp_flush here: flushing the whole window once per
+		 * incoming datagram is O(N^2) once retransmits pile up, and
+		 * it starves this recv loop until the kernel drops incoming
+		 * packets (including the ACKs we are waiting for). The
+		 * interval timer flushes every session. */
 	}
 }
 
@@ -414,6 +418,7 @@ int server_main_loop()
 	}		
 
 	g_exit_base = base;
+	xkcp_set_event_base(base);
 	
 	xkcp_hash = create_hash(100);
 	if (xkcp_get_param()->fec)

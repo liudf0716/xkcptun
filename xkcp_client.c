@@ -180,6 +180,7 @@ int client_main_loop(void)
 	}
 
 	g_exit_base = base;
+	xkcp_set_event_base(base);
 
 	struct xkcp_param *xparam = xkcp_get_param();
 	if (xparam->fec) {

@@ -2,6 +2,9 @@
 #define	_XKCP_UTIL_
 
 #include "ikcp.h"
+#include <event2/util.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 #define HTTP_IP_ADDR_LEN	16
 #define	OBUF_SIZE 			4096
@@ -11,8 +14,8 @@
 #define XKCP_CLOSE_SIGNAL_LEN	4
 
 struct event;
+struct event_base;
 struct eventbase;
-struct sockaddr_in;
 struct bufferevent;
 struct fec_conn;
 
@@ -84,6 +87,12 @@ struct xkcp_task *get_task_from_conv(IUINT32 conv, iqueue_head *task_list);
 struct xkcp_task *xkcp_find_task(IUINT32 conv, const struct sockaddr_in *peer);
 
 void xkcp_task_check_timeout(iqueue_head *task_list);
+
+void xkcp_set_event_base(struct event_base *base);
+
+/* queue a UDP datagram that hit EAGAIN; drained on socket writability */
+void xkcp_enqueue_udp_at(evutil_socket_t fd, const struct sockaddr_in *sa,
+			 const char *buf, int len);
 
 /* periodic FEC tick for one session's peer codec (parity flush + adaptation) */
 void xkcp_fec_tick(struct xkcp_proxy_param *ptr);

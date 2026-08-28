@@ -35,6 +35,7 @@
 
 #include <event2/event.h>
 #include <event2/event_struct.h>
+#include <event2/bufferevent.h>
 #include <event2/bufferevent_ssl.h>
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
@@ -207,10 +208,87 @@ struct fec_send_ctx {
 static void fec_send_pkt(void *user, const char *pkt, int len)
 {
 	struct fec_send_ctx *ctx = user;
+	int nret = sendto(ctx->fd, pkt, len, 0, (struct sockaddr *)ctx->addr,
+			  sizeof(*ctx->addr));
 
-	if (sendto(ctx->fd, pkt, len, 0, (struct sockaddr *)ctx->addr,
-		   sizeof(*ctx->addr)) < 0)
+	if (nret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+		xkcp_enqueue_udp_at(ctx->fd, ctx->addr, pkt, len);
+	else if (nret < 0)
 		debug(LOG_ERR, "fec sendto: %s", strerror(errno));
+}
+
+/* ---- UDP egress queue ------------------------------------------------
+ * The kernel UDP send buffer is small (net.core.wmem_max is 212KB by
+ * default) while one flush can burst a full window (>1MB). A blocking
+ * writer would get natural backpressure here; a non-blocking sendto
+ * gets EAGAIN, and dropping the packet turns into an RTO storm that
+ * also destroys the reverse ACK path. Instead of dropping, queue the
+ * datagram in userland and drain it when the socket is writable.      ---- */
+
+static struct evbuffer *g_udp_pend = NULL;
+static struct event *g_udp_wev = NULL;
+static int g_udp_wev_active = 0;
+static struct event_base *g_evbase = NULL;
+
+void xkcp_set_event_base(struct event_base *base)
+{
+	g_evbase = base;
+}
+
+/* queued entry layout: [sockaddr_in][2-byte payload len][payload] */
+#define UDP_PEND_HDR	(sizeof(struct sockaddr_in) + 2)
+#define UDP_PEND_MAX	(4 * 1024 * 1024)
+
+static void udp_pend_drain_cb(evutil_socket_t fd, short what, void *arg)
+{
+	char buf[2048];
+
+	(void)what; (void)arg;
+
+	while (evbuffer_get_length(g_udp_pend) >= UDP_PEND_HDR) {
+		struct sockaddr_in sa;
+		uint16_t len;
+		int nret;
+
+		evbuffer_remove(g_udp_pend, &sa, sizeof(sa));
+		evbuffer_remove(g_udp_pend, &len, sizeof(len));
+		evbuffer_remove(g_udp_pend, buf, len);
+
+		nret = sendto(fd, buf, len, 0, (struct sockaddr *)&sa, sizeof(sa));
+		if (nret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+			evbuffer_prepend(g_udp_pend, buf, len);
+			evbuffer_prepend(g_udp_pend, &len, sizeof(len));
+			evbuffer_prepend(g_udp_pend, &sa, sizeof(sa));
+			return;	/* still saturated, wait for the next event */
+		}
+	}
+
+	/* fully drained: stop polling writability */
+	event_del(g_udp_wev);
+	g_udp_wev_active = 0;
+}
+
+void xkcp_enqueue_udp_at(evutil_socket_t fd, const struct sockaddr_in *sa,
+			 const char *buf, int len)
+{
+	uint16_t l = (uint16_t)len;
+
+	if (!g_udp_pend) {
+		g_udp_pend = evbuffer_new();
+		g_udp_wev = event_new(g_evbase, fd, EV_WRITE, udp_pend_drain_cb, NULL);
+	}
+
+	if (evbuffer_get_length(g_udp_pend) > UDP_PEND_MAX)
+		return;	/* extreme overload: drop rather than grow without bound */
+
+	evbuffer_add(g_udp_pend, sa, sizeof(*sa));
+	evbuffer_add(g_udp_pend, &l, sizeof(l));
+	evbuffer_add(g_udp_pend, buf, len);
+
+	if (!g_udp_wev_active) {
+		event_add(g_udp_wev, NULL);
+		g_udp_wev_active = 1;
+	}
 }
 
 /* periodic FEC tick: flush parity for stale partial groups and adapt the
@@ -237,6 +315,10 @@ static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	}
 
 	nret = sendto(ptr->xkcpfd, buf, len, 0, (struct sockaddr *)&ptr->sockaddr, sizeof(ptr->sockaddr));
+	if (nret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+		xkcp_enqueue_udp_at(ptr->xkcpfd, &ptr->sockaddr, buf, len);
+		return len;
+	}
 	if (nret < 0)
 		debug(LOG_ERR, "xkcp_output conv [%u] fd [%d] sendto: %s",
 			  kcp->conv, ptr->xkcpfd, strerror(errno));
@@ -315,16 +397,37 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 	return puser;
 }
 
+/* KCP ingress backpressure. The TCP peer (e.g. sshd) can drain into
+ * ikcp_send far faster than the KCP/UDP path can carry; without a bound
+ * the UDP socket send buffer saturates and every flush drops packets
+ * wholesale (EAGAIN), including ACKs, collapsing the session into an
+ * RTO storm. Above the high watermark we stop reading from the TCP
+ * socket: its receive buffer fills, the TCP window closes and the peer
+ * is throttled at the source. The timer re-enables reading below the
+ * low watermark. */
+#define XKCP_SND_QUE_HIGH	256	/* queued KCP segments */
+#define XKCP_SND_QUE_LOW	64
+
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 {
 	char buf[2048];
 	int  len, nret;
 	struct evbuffer *input = bufferevent_get_input(bev);
+
+	if (kcp->nsnd_que > XKCP_SND_QUE_HIGH) {
+		bufferevent_disable(bev, EV_READ);
+		return;
+	}
+
 	while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) {
 		nret = ikcp_send(kcp, buf, len);
 		if (nret < 0)
 			debug(LOG_INFO, "ikcp_send conv [%u] failed [%d] len [%d]",
 				  kcp->conv, nret, len);
+		if (kcp->nsnd_que > XKCP_SND_QUE_HIGH) {
+			bufferevent_disable(bev, EV_READ);
+			break;
+		}
 	}
 	ikcp_flush(kcp);
 }
@@ -539,8 +642,14 @@ void xkcp_update_task_list(iqueue_head *task_list)
 	IUINT32 now = iclock();
 
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp)
+		if (task->kcp) {
 			ikcp_update(task->kcp, now);
+			/* resume a TCP peer paused by KCP ingress backpressure
+			 * once the send queue has drained */
+			if (task->bev && task->kcp->nsnd_que < XKCP_SND_QUE_LOW &&
+			    !(bufferevent_get_enabled(task->bev) & EV_READ))
+				bufferevent_enable(task->bev, EV_READ);
+		}
 	}
 }
 
