@@ -46,6 +46,7 @@ struct xkcp_param {
 	int 	resend;			// resend
 	int 	nc; 			// no congestion
 	int		loss_ctrl;		// losscntl: loss-driven AIMD send window (1=on)
+	int		pacing;			// pacing: max KCP segments per flush tick (0=off)
 	int		fec;			// fec enable (1=frame all datagrams)
 	int 	sock_buf;		// sockbuf
 	int 	keepalive;		// keepalive

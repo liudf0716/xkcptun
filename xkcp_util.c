@@ -333,6 +333,9 @@ void xkcp_set_config_param(ikcpcb *kcp)
 	ikcp_wndsize(kcp, param->sndwnd, param->rcvwnd);
 	/* loss-driven AIMD starts unrestricted and adapts down on loss */
 	kcp->loss_wnd = (param->loss_ctrl != 0) ? kcp->snd_wnd : 0;
+	/* smooth the per-tick burst: a full window in one flush overflows
+	 * shallow buffers on the transit path */
+	kcp->pacing = param->pacing;
 	ikcp_nodelay(kcp, param->nodelay, param->interval, param->resend, param->nc);
 	/* FEC frames add an 8-byte header to every datagram: shrink the KCP
 	 * mtu accordingly so framed packets stay within the path MTU. */

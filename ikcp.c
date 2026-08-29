@@ -291,6 +291,7 @@ ikcpcb* ikcp_create(IUINT32 conv, void *user)
 	kcp->loss_wnd = 0;
 	kcp->loss_ts = 0;
 	kcp->grow_ts = 0;
+	kcp->pacing = 0;
     kcp->dead_link = IKCP_DEADLINK;
 	kcp->output = NULL;
 	kcp->writelog = NULL;
@@ -1044,9 +1045,17 @@ void ikcp_flush(ikcpcb *kcp)
 	rtomin = (kcp->nodelay == 0)? (kcp->rx_rto >> 3) : 0;
 
 	// flush data segments
+	int sent = 0;
 	for (p = kcp->snd_buf.next; p != &kcp->snd_buf; p = p->next) {
 		IKCPSEG *segment = iqueue_entry(p, IKCPSEG, node);
 		int needsend = 0;
+
+		/* pacing: stop when the per-tick quota is used up. The check
+		 * runs before any segment state is mutated so deferred
+		 * segments are sent intact on the next flush. */
+		if (kcp->pacing > 0 && sent >= kcp->pacing)
+			break;
+
 		if (segment->xmit == 0) {
 			needsend = 1;
 			segment->xmit++;
@@ -1076,6 +1085,7 @@ void ikcp_flush(ikcpcb *kcp)
 		if (needsend) {
 			int size, need;
 			kcp->snd_pkts++;
+			sent++;
 			if (segment->xmit > 1)
 				kcp->loss_pkts++;
 			segment->ts = current;

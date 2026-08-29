@@ -64,6 +64,7 @@ static void xkcp_param_init(struct xkcp_param *param)
 	param->resend = 2;
 	param->nc = 0;
 	param->loss_ctrl = 1;
+	param->pacing = 0;
 	param->fec = 0;
 	param->sock_buf = 4194304;
 	param->keepalive = 10;
@@ -156,6 +157,7 @@ static struct config_entry config_table[] = {
 	{"resend",         CFG_INT,  offsetof(struct xkcp_param, resend)},
 	{"nc",             CFG_INT,  offsetof(struct xkcp_param, nc)},
 	{"lossctrl",       CFG_INT,  offsetof(struct xkcp_param, loss_ctrl)},
+	{"pacing",         CFG_INT,  offsetof(struct xkcp_param, pacing)},
 	{"fec",            CFG_INT,  offsetof(struct xkcp_param, fec)},
 	{"sockbuf",        CFG_INT,  offsetof(struct xkcp_param, sock_buf)},
 	{"keepalive",      CFG_INT,  offsetof(struct xkcp_param, keepalive)},
