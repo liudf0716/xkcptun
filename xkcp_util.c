@@ -186,7 +186,10 @@ del_task(struct xkcp_task *task) {
 
 	__list_del(entry->prev, entry->next);
 
-	if (conv_hash && task->kcp) {
+	/* task->conv is cached at add time and stays valid after the kcp is
+	 * released; task->kcp may already dangle here, and task->sockaddr
+	 * may point into a not-yet-freed param the caller owns */
+	if (conv_hash && task->conv) {
 		char key[48];
 		struct xkcp_task *cur = NULL;
 
@@ -685,18 +688,13 @@ void xkcp_task_check_timeout(iqueue_head *task_list)
 			debug(LOG_INFO, "task conv [%u] timed out after %d seconds, closing",
 				  task->kcp->conv, conn_timeout);
 
-			if (task->user_owned) {
-				struct xkcp_proxy_param *param = (struct xkcp_proxy_param *)task->kcp->user;
-				ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
-				ikcp_flush(task->kcp);
-				ikcp_release(task->kcp);
-				if (param)
-					free(param);
-			} else {
-				ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
-				ikcp_flush(task->kcp);
-				ikcp_release(task->kcp);
-			}
+			struct xkcp_proxy_param *param = NULL;
+			if (task->user_owned)
+				param = (struct xkcp_proxy_param *)task->kcp->user;
+
+			ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
+			ikcp_flush(task->kcp);
+			ikcp_release(task->kcp);
 
 			if (task->bev) {
 				bufferevent_setcb(task->bev, NULL, NULL, NULL, NULL);
@@ -704,7 +702,16 @@ void xkcp_task_check_timeout(iqueue_head *task_list)
 				task->bev = NULL;
 			}
 
+			/* Remove from the list and conv index BEFORE freeing
+			 * param: del_task builds the index key from
+			 * task->sockaddr, which points into param. Freeing
+			 * param first makes the key read freed memory, and a
+			 * mismatched key leaves a stale hash entry that later
+			 * crashes xkcp_find_task with a use-after-free. */
 			del_task(task);
+			task->kcp = NULL;
+			if (param)
+				free(param);
 			free(task);
 		}
 	}

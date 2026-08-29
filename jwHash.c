@@ -104,21 +104,27 @@ jwHashTable *create_hash( size_t buckets )
 
 void delete_hash( jwHashTable *table,  hashtable_free_item_callback free_cb, HASHVALTAG ktype, HASHVALTAG vtype)
 {
-	int i = 0; 
+	int i = 0;
+	if (!table || !table->bucket)
+		return;
 	for(; i < table->buckets; i++) {
 		jwHashEntry *entry = table->bucket[i];
+		table->bucket[i] = NULL;
 		while(entry) {
+			jwHashEntry *next = entry->next;
 			switch(vtype) {
 			case HASHPTR:
-				free_cb(entry->value.ptrValue);
+				if (free_cb && entry->value.ptrValue)
+					free_cb(entry->value.ptrValue);
 				break;
 			case HASHSTRING:
-				free_cb(entry->value.strValue);
+				if (free_cb && entry->value.strValue)
+					free_cb(entry->value.strValue);
 				break;
 			default:
 				break;
 			}
-			
+
 			switch(ktype) {
 			case HASHSTRING:
 				free(entry->key.strValue);
@@ -126,13 +132,14 @@ void delete_hash( jwHashTable *table,  hashtable_free_item_callback free_cb, HAS
 			default:
 				break;
 			}
-			jwHashEntry *next = entry->next;
 			free(entry);
 			entry = next;
 		}
 	}
-	
+
 	free(table->bucket);
+	table->bucket = NULL;
+	table->buckets = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
