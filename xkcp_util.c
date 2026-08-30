@@ -372,6 +372,12 @@ void xkcp_apply_sockbuf(int fd)
 	struct xkcp_param *param = xkcp_get_param();
 	int bufsz = param->sock_buf;
 
+	if (param->dscp > 0) {
+		int tos = (param->dscp << 2) & 0xFF;
+		if (setsockopt(fd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos)) < 0)
+			debug(LOG_WARNING, "setsockopt IP_TOS [dscp=%d] failed: %s", param->dscp, strerror(errno));
+	}
+
 	if (bufsz <= 0)
 		return;
 
