@@ -35,6 +35,7 @@
 # Cmake build directories and middle files
 build/
 build-asan/
+dist/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
