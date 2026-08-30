@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>SSH 直连 PK xkcptun UDP 隧道 —— 跨境 SSH 提速对决</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #0b1220; overflow: hidden;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #e8eef7; }
+  .slide { position: absolute; inset: 0; display: none; flex-direction: column;
+    padding: 52px 80px; background: radial-gradient(1200px 700px at 75% -10%, #14243f 0%, #0b1220 60%); }
+  .slide.active { display: flex; }
+  .kicker { color: #4cc9f0; font-size: 19px; letter-spacing: 4px; font-weight: 600; margin-bottom: 14px; }
+  h1 { font-size: 54px; line-height: 1.28; font-weight: 800; }
+  h2 { font-size: 38px; font-weight: 700; margin-bottom: 26px; }
+  h2 .accent { color: #4cc9f0; }
+  p.lead { font-size: 23px; color: #b9c7da; line-height: 1.7; }
+  .grow { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  table { border-collapse: collapse; width: 100%; font-size: 21px; }
+  th, td { padding: 11px 16px; border-bottom: 1px solid #22314d; text-align: left; }
+  th { color: #4cc9f0; font-weight: 600; font-size: 18px; letter-spacing: 1px; }
+  td.num, th.num { font-family: "SF Mono", Consolas, monospace; }
+  tr.hl td { color: #7bf1a8; font-weight: 700; }
+  tr.bad td { color: #ff8fa3; }
+  .cards { display: flex; gap: 22px; margin-top: 8px; }
+  .card { flex: 1; background: #101b30; border: 1px solid #22314d; border-radius: 14px; padding: 24px 26px; }
+  .card h3 { font-size: 21px; color: #4cc9f0; margin-bottom: 12px; }
+  .card p { font-size: 18px; color: #b9c7da; line-height: 1.65; }
+  .card .big { font-size: 42px; font-weight: 800; color: #fff; font-family: Consolas, monospace; margin: 6px 0; }
+  .big.red { color: #ff8fa3; } .big.green { color: #7bf1a8; }
+  .code { background: #0a1526; border: 1px solid #1d2c47; border-left: 4px solid #4cc9f0;
+    border-radius: 8px; padding: 14px 20px; font-family: Consolas, monospace; font-size: 17.5px;
+    color: #9fb6d4; white-space: pre; line-height: 1.55; }
+  .code em { color: #ffd166; font-style: normal; }
+  .code .cmt { color: #5d7590; }
+  ul.big { font-size: 23px; line-height: 1.85; color: #cdd9ea; padding-left: 30px; }
+  ul.big li b { color: #fff; }
+  .tag { display: inline-block; background: #16283f; border: 1px solid #2c4265; color: #9fb6d4;
+    border-radius: 20px; padding: 4px 16px; font-size: 17px; margin: 0 8px 10px 0; }
+  .step { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 18px; }
+  .stepnum { min-width: 44px; height: 44px; border-radius: 50%; background: #16283f; border: 2px solid #4cc9f0;
+    color: #4cc9f0; font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center; }
+  .stepbody { flex: 1; }
+  .stepbody h3 { font-size: 22px; margin-bottom: 6px; }
+  .stepbody p { font-size: 18px; color: #b9c7da; line-height: 1.6; }
+  .warn { color: #ffd166; }
+  .footer { position: absolute; bottom: 20px; left: 80px; right: 80px; display: flex;
+    justify-content: space-between; color: #55677f; font-size: 15px; }
+  .progress { position: absolute; bottom: 0; left: 0; height: 4px; background: #4cc9f0; transition: width .25s; }
+</style>
+</head>
+<body>
+
+<!-- S1 封面 -->
+<section class="slide active">
+  <div class="grow">
+    <div class="kicker">SSH ACCELERATION SHOWDOWN · 2026.08</div>
+    <h1><span style="color:#8d99ae">BBR 直连</span> VS <span style="color:#4cc9f0">xkcptun UDP 隧道</span><br>同一条中美线路，跨境 SSH 提速对决</h1>
+    <div class="cards" style="margin-top:30px">
+      <div class="card" style="text-align:center"><h3>直连 TCP（已开 BBR+fq）</h3><div class="big">108s</div><p>512MB 长稳传输<br>坏时段单轮曾崩 4m17s</p></div>
+      <div class="card" style="flex:0 0 90px; display:flex; align-items:center; justify-content:center; border:none; background:none"><div style="font-size:40px; color:#ffd166; font-weight:900">PK</div></div>
+      <div class="card" style="text-align:center; border-color:#2f5d43"><h3 style="color:#7bf1a8">xkcptun UDP 隧道</h3><div class="big green">69s</div><p>512MB 长稳传输<br>7.7 MB/s，重传率仅 6%</p></div>
+    </div>
+    <p class="lead" style="margin-top:24px">顺带解决两个痛点：跨境 SSH 卡顿（RTT 170ms / 丢包 10%）、SSH 端口暴露被扫描爆破。<br>
+    搭建 → 验证 → 对决，每条命令均可复现。</p>
+  </div>
+  <div class="footer"><span>github.com/liudf0716/xkcptun</span><span>1 / 17</span></div>
+</section>
+
+<!-- S2 痛点1 -->
+<section class="slide">
+  <div class="kicker">痛点 ①</div>
+  <h2>跨境 SSH 有多卡：<span class="accent">一条会呼吸的链路</span></h2>
+  <div class="grow">
+    <div class="cards">
+      <div class="card"><h3>延迟</h3><div class="big">160–175ms</div><p>中美单程物理距离决定，无法消除<br>每次交互至少 2×RTT</p></div>
+      <div class="card"><h3>丢包</h3><div class="big red">5–10%</div><p>晚高峰更差；TCP 一遇丢包<br>拥塞窗口坍缩 + RTO 退避</p></div>
+      <div class="card"><h3>体感</h3><div class="big red">卡顿·假死</div><p>打字延迟、批量传输突然掉速、<br>会话直接僵死几十秒到几分钟</p></div>
+    </div>
+    <p class="lead" style="margin-top:26px">实测直连 BBR 的单轮 32MB 传输：<b style="color:#fff">好时段 26 秒，坏时段崩到 4 分 17 秒</b>——差 10 倍。
+    <br>TCP 在丢包链路上的问题不是"慢"，是<b style="color:#ff8fa3">不可预测</b>：KCP 用冗余与快速重传换确定性。</p>
+  </div>
+  <div class="footer"><span>痛点① 卡顿</span><span>2 / 17</span></div>
+</section>
+
+<!-- S3 痛点2 -->
+<section class="slide">
+  <div class="kicker">痛点 ②</div>
+  <h2>暴露的 SSH 端口：<span class="accent">互联网上最热闹的猎场</span></h2>
+  <div class="grow">
+    <div class="cards">
+      <div class="card"><h3>全端口扫描</h3><div class="big">分钟级</div><p>masscan/shodan 全网扫描<br>新增公网 IP 几分钟内即被收录</p></div>
+      <div class="card"><h3>口令嗅探爆破</h3><div class="big red">24×7</div><p>针对 22/2222 等常见端口的<br>弱口令字典爆破常年不断</p></div>
+      <div class="card"><h3>0Day 风险</h3><div class="big">暴露面</div><p>sshd 历史漏洞（如 CVE-2024-6387）<br>只要端口可达就可能被打</p></div>
+    </div>
+    <p class="lead" style="margin-top:26px">常规对策（改端口 / fail2ban / 密钥认证）治标不治本：<b style="color:#fff">sshd 依然对全网可见</b>。
+    <br><b style="color:#7bf1a8">xkcptun 的思路：让 sshd 只监听本机/内网，公网上只暴露一个 UDP 端口</b>——
+    TCP 扫描器扫不到任何开放端口；UDP/KCP 流量需要正确的会话才能建立连接，入侵面大幅收窄。</p>
+  </div>
+  <div class="footer"><span>痛点② 安全</span><span>3 / 17</span></div>
+</section>
+
+<!-- S4 方案架构 -->
+<section class="slide">
+  <div class="kicker">方案</div>
+  <h2>架构：<span class="accent">SSH 藏进 KCP/UDP 隧道</span></h2>
+  <div class="grow">
+    <div class="code" style="font-size:19px"><span class="cmt">本地 (办公网)                      公网 (只有 UDP 可达)                美国 VPS (bwg)</span>
+[ssh 客户端] --TCP--> [xkcp_client :2222] ==KCP/UDP:9089==> [xkcp_server] --TCP--> [sshd :27334 仅本机可达]
+                          绑定内网网卡 IP                        监听 0.0.0.0:9089/udp        防火墙拒绝公网到 22/27334 的 TCP</div>
+    <ul class="big" style="margin-top:26px">
+      <li><b>加速</b>：KCP (fast3) + 可选 FEC 前向纠错 + 快速重传，用带宽换确定性，专治高丢包链路</li>
+      <li><b>隐身</b>：VPS 的 TCP 层对公网完全闭合，扫描器看到的是一个"沉默"的 UDP 端口；配合 <b>crypt 加密</b>与密钥认证，安全性不降反升</li>
+      <li><b>通用</b>：隧道里跑的就是普通 TCP，SSH / SFTP / 端口转发全部透明可用</li>
+    </ul>
+  </div>
+  <div class="footer"><span>方案</span><span>4 / 17</span></div>
+</section>
+
+<!-- S5 安装构建 -->
+<section class="slide">
+  <div class="kicker">搭建 · 步骤 1</div>
+  <h2>构建：<span class="accent">两端都从源码编译</span></h2>
+  <div class="grow">
+    <div class="code"><span class="cmt"># 本地与 VPS 各执行一次（依赖：cmake / gcc / libevent-dev）</span>
+git clone https://github.com/liudf0716/xkcptun.git
+cd xkcptun && mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release && make -j4
+ls xkcp_server xkcp_client   <em># 两个二进制，server 放 VPS，client 放本地</em></div>
+    <ul class="big" style="margin-top:22px; font-size:20px">
+      <li>VPS 侧要求：libevent-dev；内核建议开 BBR（直连对照实验需要）：<span class="code" style="display:inline;padding:2px 10px;font-size:15px">sysctl -w net.ipv4.tcp_congestion_control=bbr; sysctl -w net.core.default_qdisc=fq</span></li>
+      <li>建议同步调大 UDP 缓冲：<span class="code" style="display:inline;padding:2px 10px;font-size:15px">sysctl -w net.core.rmem_max=16777216 net.core.wmem_max=16777216</span></li>
+    </ul>
+  </div>
+  <div class="footer"><span>搭建 1/3</span><span>5 / 17</span></div>
+</section>
+
+<!-- S6 服务端配置 -->
+<section class="slide">
+  <div class="kicker">搭建 · 步骤 2</div>
+  <h2>VPS 端：<span class="accent">server.json 与 sshd 收口</span></h2>
+  <div class="grow">
+    <div class="code"><span class="cmt">// ~/xkcptun/server.json</span>
+{
+  "localinterface": "eth0",  "localport": 9089,   <em>// KCP/UDP 监听，公网唯一暴露面</em>
+  "remoteaddr": "127.0.0.1", "remoteport": 27334, <em>// 转发目标 = 本机 sshd</em>
+  "mode": "fast3",           "mtu": 1350,
+  "sndwnd": 2048,            "rcvwnd": 2048,
+  "fec": 1,                  "pacing": 128,
+  "crypt": "aes",            <em>// 生产环境务必加密（测试对比时用 none）</em>
+  "key": "你的强随机密钥",     "nocomp": true
+}
+nohup ./xkcp_server -c server.json -f -d 3 &</div>
+    <ul class="big" style="margin-top:18px; font-size:20px">
+      <li><b>安全收口</b>：防火墙只放行 UDP 9089 与必要的业务端口，封禁公网到 sshd 端口的 TCP：
+      <span class="code" style="display:inline;padding:2px 10px;font-size:15px">ufw deny in tcp to any port 27334</span>（sshd 仍监听 27334，但只服务于隧道回环）</li>
+      <li>sshd 本身：密钥认证 + <b>PasswordAuthentication no</b>，双保险</li>
+    </ul>
+  </div>
+  <div class="footer"><span>搭建 2/3</span><span>6 / 17</span></div>
+</section>
+
+<!-- S7 客户端配置 -->
+<section class="slide">
+  <div class="kicker">搭建 · 步骤 3</div>
+  <h2>本地端：<span class="accent">client.json 与启动</span></h2>
+  <div class="grow">
+    <div class="code"><span class="cmt">// 本地 ~/xkcptun/client.json（参数与 server 端一致！）</span>
+{
+  "localinterface": "br0",   "localport": 2222,  <em>// 本地 TCP 监听 = SSH 入口</em>
+  "remoteaddr": "VPS公网IP",  "remoteport": 9089,
+  "mode": "fast3", "mtu": 1350, "sndwnd": 2048, "rcvwnd": 2048,
+  "fec": 1, "pacing": 128, "crypt": "aes", "key": "同一个密钥", "nocomp": true
+}
+nohup ./xkcp_client -c client.json -f -d 3 &
+<span class="cmt"># 日常使用：SSH 目标指向本地隧道口</span>
+ssh -p 2222 root@<b>本地网卡IP</b></div>
+    <div class="cards" style="margin-top:16px">
+      <div class="card"><h3>注意 1：绑定 IP</h3><p>client 绑定在 <b>localinterface 的 IP</b> 上（不是 127.0.0.1）。本例即 <b>192.168.8.226:2222</b>。ssh 命令要用这个 IP</p></div>
+      <div class="card"><h3>注意 2：参数一致</h3><p>mode/mtu/窗口/fec/pacing 两端必须一致，否则轻则性能打折，重则无法互通</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>搭建 3/3</span><span>7 / 17</span></div>
+</section>
+
+<!-- S8 验证1 -->
+<section class="slide">
+  <div class="kicker">验证 · 步骤 4</div>
+  <h2>隧道连通性验证：<span class="accent">四步检查法</span></h2>
+  <div class="grow">
+    <div class="step"><div class="stepnum">1</div><div class="stepbody"><h3>SSH 走通</h3>
+      <div class="code" style="font-size:16px">ssh -p 2222 root@192.168.8.226 'echo tunnel-ok'   <em># 输出 tunnel-ok 即通</em></div></div></div>
+    <div class="step"><div class="stepnum">2</div><div class="stepbody"><h3>确认走的是隧道而不是直连</h3>
+      <div class="code" style="font-size:16px">ss -tlnp | grep 2222      <em># 本地：xkcp_client 监听 2222</em>
+ss -unpa | grep 9089      <em># VPS：xkcp_server 的 UDP 会话出现你的 IP</em></div></div></div>
+    <div class="step"><div class="stepnum">3</div><div class="stepbody"><h3>会话健康度（实时）</h3>
+      <div class="code" style="font-size:16px">./xkcp_spy -h 192.168.8.226 -c -t status
+→ srtt [172ms] rto [188ms] inflight [...] retrans [..%]   <em># srtt≈真实RTT 为健康</em></div></div></div>
+    <div class="step"><div class="stepnum">4</div><div class="stepbody"><h3>确认 sshd 已隐身</h3>
+      <div class="code" style="font-size:16px"><em># 从第三方机器：</em> nc -zv VPS_IP 27334   <em># 应被拒绝/超时 = 隐身成功</em></div></div></div>
+  </div>
+  <div class="footer"><span>验证</span><span>8 / 17</span></div>
+</section>
+
+<!-- S9 测试原理 -->
+<section class="slide">
+  <div class="kicker">性能对比 · 原理</div>
+  <h2>怎么测才可信：<span class="accent">三条铁律</span></h2>
+  <div class="grow">
+    <div class="cards">
+      <div class="card"><h3>铁律 1 · 同时段交叉</h3><p>跨境链路质量随时间波动可达 10 倍。<br>两通道按 <b>A→B 为一轮交叉执行</b><br>（A=直连，B=xkcptun 隧道），<br>让波动均匀作用于每一方</p></div>
+      <div class="card"><h3>铁律 2 · 看最差值</h3><p>中位数代表"通常多快"，<br><b>最差值</b>代表"会不会突然卡死"。<br>SSH 体验由最差值决定</p></div>
+      <div class="card"><h3>铁律 3 · 变量唯一</h3><p>每轮两通道使用同一 VPS、同一 sshd、<br>同版本 ssh；KCP 参数两端一致；<br>直连侧开启 BBR（给对手满血）</p></div>
+    </div>
+    <p class="lead" style="margin-top:24px">流量模型：<b style="color:#fff">SSH = 交互小包 + 偶发批量</b>。
+    所以分别测「交互延迟」（T2）与「单流吞吐」（T1）＋「长稳」（T4），并各取多轮。</p>
+  </div>
+  <div class="footer"><span>原理</span><span>9 / 17</span></div>
+</section>
+
+<!-- S10 T1 -->
+<section class="slide">
+  <div class="kicker">性能对比 · T1 单流吞吐</div>
+  <h2>T1：<span class="accent">32MB 传输，交叉 5 轮</span></h2>
+  <div class="grow">
+    <div class="code">run() { local t0=$(date +%s.%N)
+  ssh $2 'dd if=/dev/zero bs=1M count=32 2>/dev/null' | wc -c > /dev/null
+  local t1=$(date +%s.%N); echo "$1: $(echo "$t1 - $t0" | bc)s" }
+for i in 1 2 3 4 5; do
+  run direct  "-o ControlPath=/tmp/mA bwg"                       <em># A 直连(BBR)</em>
+  run xkcptun "-o ControlPath=/tmp/mB -p 2222 root@192.168.8.226" <em># B 隧道</em>
+done</div>
+    <ul class="big" style="margin-top:18px; font-size:20px">
+      <li><b>为什么用 dd 管道</b>：服务端生成数据经 SSH 流回本地，测的是"完整 SSH 批量传输"端到端吞吐；wc -c 校验字节完整</li>
+      <li><b>对照组直连必须开 BBR</b>：<span class="code" style="display:inline;padding:2px 10px;font-size:15px">net.ipv4.tcp_congestion_control=bbr</span>，证明隧道赢的是"最差体验"而非"对手没调优"</li>
+    </ul>
+  </div>
+  <div class="footer"><span>T1</span><span>10 / 17</span></div>
+</section>
+
+<!-- S11 T2 -->
+<section class="slide">
+  <div class="kicker">性能对比 · T2 交互延迟</div>
+  <h2>T2：<span class="accent">模拟打字手感</span></h2>
+  <div class="grow">
+    <div class="code"><span class="cmt"># 1) 先建立 SSH 连接复用（消除每次连接的握手，只测会话内往返）</span>
+ssh -o ControlMaster=auto -o ControlPath=/tmp/mB \
+    -o ControlPersist=1800 -fN -p 2222 root@192.168.8.226
+<span class="cmt"># 2) 复用连接上连续执行 20 条命令并计时</span>
+time (for i in $(seq 20); do ssh -o ControlPath=/tmp/mB \
+      -p 2222 root@192.168.8.226 true; done)</div>
+    <ul class="big" style="margin-top:18px; font-size:20px">
+      <li><b>必须复用</b>：不复用测到的 = 完整 SSH 握手（3+RTT），不是交互延迟</li>
+      <li><b>读数方式</b>：总时间 ÷ 20 ≈ 每条命令毫秒数；理论下限 ≈ 2×RTT（约 320ms@160ms RTT），这是物理极限，隧道不可能突破</li>
+      <li><b>样本量</b>：正式对比建议 200 样本并输出中位数 / P95（小样本会被丢包重传噪声淹没）</li>
+    </ul>
+  </div>
+  <div class="footer"><span>T2</span><span>11 / 17</span></div>
+</section>
+
+<!-- S12 T4 -->
+<section class="slide">
+  <div class="kicker">性能对比 · T4 长稳</div>
+  <h2>T4：<span class="accent">512MB 长跑 + 会话健康采样</span></h2>
+  <div class="grow">
+    <div class="code"><span class="cmt"># 一条命令跑 512MB（约 1-2 分钟）</span>
+time ssh <通道> 'dd if=/dev/zero bs=1M count=512 2>/dev/null' | wc -c
+<span class="cmt"># 传输进行到一半时，另开终端采样隧道会话健康度（执行 2-3 次）</span>
+./xkcp_spy -h 192.168.8.226 -c -t status
+→ srtt [153ms] retrans [6%] state [0]   <em># 判读标准见下</em></div>
+    <ul class="big" style="margin-top:18px; font-size:20px">
+      <li><b>健康标准</b>：srtt 稳定在真实 RTT±100ms 内；retrans &lt; 30%；state 为 0（非 -1）；无残留僵尸会话</li>
+      <li><b>为什么测长稳</b>：短传输可能"碰巧"不遇丢包；512MB 必然穿越多个丢包周期，暴露真实恢复能力</li>
+      <li><b>双端留证</b>：VPS 上同时 <span class="code" style="display:inline;padding:2px 10px;font-size:15px">wc -l server.log</span> 确认无错误风暴</li>
+    </ul>
+  </div>
+  <div class="footer"><span>T4</span><span>12 / 17</span></div>
+</section>
+
+<!-- S13 实测结果1 -->
+<section class="slide">
+  <div class="kicker">实测结果 · 好时段</div>
+  <h2>实测（0% 丢包 / RTT 161ms 时段）：<span class="accent">xkcptun 领先</span></h2>
+  <div class="grow">
+    <table>
+      <tr><th>指标</th><th>直连（BBR+fq）</th><th>xkcptun 隧道</th><th>说明</th></tr>
+      <tr><td>T1 32MB 中位（5 轮）</td><td class="num">10.5s · 3.2MB/s</td><td class="num hl">6.0s · 5.5MB/s</td><td>xkcptun 快 43%</td></tr>
+      <tr><td>T1 最差值</td><td class="num bad">17.3s</td><td class="num">7.0s</td><td>隧道波动小一半</td></tr>
+      <tr><td>T4 512MB 长稳</td><td class="num">108s · 5.0MB/s</td><td class="num hl">69.3s · 7.7MB/s</td><td>领先 36%，全程 retrans 仅 6%</td></tr>
+      <tr><td>T2 交互延迟</td><td class="num">359ms</td><td class="num">354ms</td><td>持平（≈2×RTT 物理极限）</td></tr>
+    </table>
+    <p class="lead" style="margin-top:22px">配置：窗口 2048 + FEC + pacing=128（两端一致）。<b style="color:#fff">延迟不加分（物理定律），吞吐与稳定性大幅加分。</b></p>
+  </div>
+  <div class="footer"><span>结果 1/2</span><span>13 / 17</span></div>
+</section>
+
+<!-- S14 实测结果2 -->
+<section class="slide">
+  <div class="kicker">实测结果 · 坏时段</div>
+  <h2>实测（10% 丢包时段）：<span class="accent">差距拉到不可忽视</span></h2>
+  <div class="grow">
+    <div class="barlabel"><span>直连 BBR · 32MB 最差表现</span><b>4m17s · 0.13MB/s</b></div>
+    <div class="bar"><div style="width:100%;background:#ff8fa3"></div></div>
+    <div class="barlabel"><span>xkcptun · 同期表现</span><b>15s · 2.2MB/s</b></div>
+    <div class="bar"><div style="width:6%;background:#7bf1a8"></div></div>
+    <p class="lead" style="margin-top:24px">丢包率升高后，TCP 的拥塞窗口坍缩 + RTO 指数退避会叠加成"分钟级假死"；
+    KCP 的快速重传 + FEC 冗余把每次丢包的代价从"一个退避周期"降到"几乎无感"。
+    <b style="color:#fff">这正是把 SSH 搬进 UDP 的核心价值：不是平均更快，而是永不假死。</b></p>
+  </div>
+  <div class="footer"><span>结果 2/2</span><span>14 / 17</span></div>
+</section>
+
+<!-- S15 安全收益 -->
+<section class="slide">
+  <div class="kicker">安全收益盘点</div>
+  <h2>隧道带来的<span class="accent">攻击面收缩</span></h2>
+  <div class="grow">
+    <table>
+      <tr><th>攻击手法</th><th>暴露的 SSH</th><th>xkcptun 方案</th></tr>
+      <tr><td>TCP 端口扫描</td><td class="bad">立即暴露 sshd 版本</td><td>扫不到任何 TCP 端口</td></tr>
+      <tr><td>口令爆破</td><td class="bad">可直接打 sshd</td><td>先要过 KCP 会话这一关</td></tr>
+      <tr><td>sshd 0day 利用</td><td class="bad">端口可达即有风险</td><td>sshd 不对公网监听</td></tr>
+      <tr><td>流量审查</td><td class="bad">SSH 协议特征明显</td><td>UDP KCP + crypt 加密 + 可混淆</td></tr>
+    </table>
+    <ul class="big" style="margin-top:20px; font-size:20px">
+      <li><b>生产清单</b>：crypt=aes + 强随机 key；sshd 仅监听 127.0.0.1 或防火墙封公网；密钥认证；定期更换 key</li>
+      <li><b>诚实声明</b>：UDP 端口仍可被 UDP 扫描发现，但无有效会话密钥时无法建立连接、无法探测出后面是 sshd</li>
+    </ul>
+  </div>
+  <div class="footer"><span>安全</span><span>15 / 17</span></div>
+</section>
+
+<!-- S16 踩坑 -->
+<section class="slide">
+  <div class="kicker">附录 · 踩坑记录</div>
+  <h2>实测中踩过的<span class="accent">四个坑</span>（帮你绕开）</h2>
+  <div class="grow">
+    <ul class="big" style="font-size:21px">
+      <li><b>ssh 127.0.0.1 被拒</b>：client 监听绑定在 localinterface 的 IP 上，不在回环——用 <b>网卡 IP</b> 连接</li>
+      <li><b>参数不一致 = 性能 cliff</b>：两端 mode/窗口/fec/pacing 不一致时轻则降速重则异常，改配置必须两端同步并重启</li>
+      <li><b>服务器 UDP 缓冲</b>：默认 wmem_max 212KB 扛不住窗口级突发，rmem/wmem 调 16MB（一次性 sysctl，建议持久化）</li>
+      <li><b>重启会话即失效</b>：client/server 重启后需重连 SSH；脚本化部署时先 pkill 再启动，注意 pkill 模式别误杀自己的 ssh 会话</li>
+    </ul>
+  </div>
+  <div class="footer"><span>踩坑</span><span>16 / 17</span></div>
+</section>
+
+<!-- S17 结尾 -->
+<section class="slide">
+  <div class="grow" style="align-items:center; text-align:center">
+    <div class="kicker" style="letter-spacing:8px">SUMMARY</div>
+    <h1 style="font-size:48px">更快（好时段 +43%，坏时段 20 倍）<br>更稳（最差值收敛一半）<br>更隐蔽（公网 TCP 零暴露）</h1>
+    <p class="lead" style="margin-top:28px;font-size:24px">一条 UDP 隧道，同时回答了「卡顿」和「暴露」两个痛点<br>
+    全部搭建、验证、测试方法均可在你自己的 VPS 上复现</p>
+    <div style="margin-top:40px"><span class="tag">github.com/liudf0716/xkcptun</span><span class="tag">BENCHMARK.md · 测试脚本</span></div>
+  </div>
+  <div class="footer"><span>xkcptun · ssh over udp</span><span>17 / 17 · 谢谢观看</span></div>
+</section>
+
+<div class="progress" id="bar"></div>
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let cur = 0;
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => s.classList.toggle('active', k === cur));
+    document.getElementById('bar').style.width = ((cur + 1) / slides.length * 100) + '%';
+  }
+  document.addEventListener('keydown', e => {
+    if (['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)) show(cur + 1);
+    if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key)) show(cur - 1);
+    if (e.key === 'Home') show(0);
+    if (e.key === 'End') show(slides.length - 1);
+  });
+  document.addEventListener('click', () => show(cur + 1));
+  show(0);
+</script>
+</body>
+</html>

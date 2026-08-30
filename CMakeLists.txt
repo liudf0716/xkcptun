@@ -2,6 +2,17 @@ cmake_minimum_required(VERSION 3.10)
 
 project(xkcptun C)
 
+# Automatically update version.h from git if available
+find_program(GIT_EXECUTABLE git)
+if(GIT_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+	execute_process(
+		COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/update_version.sh
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+		OUTPUT_QUIET
+		ERROR_QUIET
+	)
+endif()
+
 option(AUTO_INSTALL_DEPS
 	"Install missing Debian/Ubuntu packages via apt during configure"
 	ON)

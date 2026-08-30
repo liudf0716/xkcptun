@@ -32,10 +32,11 @@
 *.dSYM/
 *.su
 
-# Cmake middle files
+# Cmake build directories and middle files
+build/
+build-asan/
 CMakeFiles/
 CMakeCache.txt
-Makefile
 cmake_install.cmake
 
 # bin generated

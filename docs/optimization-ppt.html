@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>xkcptun 性能优化实战 — 从落后 4 倍到反超 kcptun</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #0b1220; overflow: hidden;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #e8eef7; }
+  .slide { position: absolute; inset: 0; display: none; flex-direction: column;
+    padding: 56px 84px; background: radial-gradient(1200px 700px at 75% -10%, #14243f 0%, #0b1220 60%); }
+  .slide.active { display: flex; }
+  .kicker { color: #4cc9f0; font-size: 20px; letter-spacing: 4px; font-weight: 600; margin-bottom: 14px; }
+  h1 { font-size: 58px; line-height: 1.25; font-weight: 800; }
+  h2 { font-size: 40px; font-weight: 700; margin-bottom: 28px; }
+  h2 .accent { color: #4cc9f0; }
+  p.lead { font-size: 24px; color: #b9c7da; line-height: 1.7; }
+  .grow { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  table { border-collapse: collapse; width: 100%; font-size: 22px; }
+  th, td { padding: 12px 18px; border-bottom: 1px solid #22314d; text-align: left; }
+  th { color: #4cc9f0; font-weight: 600; font-size: 19px; letter-spacing: 1px; }
+  td.num, th.num { font-family: "SF Mono", Consolas, monospace; }
+  tr.hl td { color: #7bf1a8; font-weight: 700; }
+  tr.bad td { color: #ff8fa3; }
+  .cards { display: flex; gap: 24px; margin-top: 10px; }
+  .card { flex: 1; background: #101b30; border: 1px solid #22314d; border-radius: 14px; padding: 26px 28px; }
+  .card h3 { font-size: 22px; color: #4cc9f0; margin-bottom: 12px; }
+  .card p { font-size: 19px; color: #b9c7da; line-height: 1.65; }
+  .card .big { font-size: 44px; font-weight: 800; color: #fff; font-family: Consolas, monospace; margin: 6px 0; }
+  .card .bad .big, .big.red { color: #ff8fa3; }
+  .big.green { color: #7bf1a8; }
+  .code { background: #0a1526; border: 1px solid #1d2c47; border-left: 4px solid #4cc9f0;
+    border-radius: 8px; padding: 16px 22px; font-family: Consolas, monospace; font-size: 18px;
+    color: #9fb6d4; white-space: pre; line-height: 1.6; }
+  .code em { color: #ffd166; font-style: normal; }
+  .bar { height: 30px; border-radius: 6px; background: #22314d; margin: 6px 0 16px; overflow: hidden; }
+  .bar > div { height: 100%; border-radius: 6px; }
+  .barlabel { display: flex; justify-content: space-between; font-size: 18px; color: #b9c7da; margin-bottom: 2px; }
+  .barlabel b { color: #fff; font-family: Consolas, monospace; }
+  ul.big { font-size: 24px; line-height: 1.9; color: #cdd9ea; padding-left: 30px; }
+  ul.big li b { color: #fff; }
+  .tag { display: inline-block; background: #16283f; border: 1px solid #2c4265; color: #9fb6d4;
+    border-radius: 20px; padding: 4px 16px; font-size: 17px; margin: 0 8px 10px 0; }
+  .footer { position: absolute; bottom: 22px; left: 84px; right: 84px; display: flex;
+    justify-content: space-between; color: #55677f; font-size: 15px; }
+  .progress { position: absolute; bottom: 0; left: 0; height: 4px; background: #4cc9f0; transition: width .25s; }
+  .arrow { position: absolute; right: 40px; bottom: 30px; color: #55677f; font-size: 26px; }
+</style>
+</head>
+<body>
+
+<!-- S1 封面 -->
+<section class="slide active">
+  <div class="grow">
+    <div class="kicker">XKCPTUN PERFORMANCE ODYSSEY · 2026.08</div>
+    <h1>一条中美链路，一个 4 倍的性能差距<br>—— xkcptun 优化全记录</h1>
+    <p class="lead" style="margin-top:28px">171ms RTT · 10% 丢包 · 纯 C 实现 · 对标 Go 版 kcptun<br>
+    最终结果：单流 <b style="color:#7bf1a8">7.7 MB/s</b>，全面反超参照物</p>
+    <div style="margin-top:36px">
+      <span class="tag">ikcp / KCP 协议</span><span class="tag">libevent</span>
+      <span class="tag">丢包恢复</span><span class="tag">发送 pacing</span><span class="tag">自适应 FEC</span>
+    </div>
+  </div>
+  <div class="footer"><span>xkcptun 优化复盘</span><span>liudf0716</span></div>
+</section>
+
+<!-- S2 背景 -->
+<section class="slide">
+  <div class="kicker">01 · 背景</div>
+  <h2>场景：<span class="accent">本地 SSH 经隧道访问美国 VPS</span></h2>
+  <div class="grow">
+    <div class="cards">
+      <div class="card"><h3>链路基线</h3><div class="big">171ms</div><p>RTT（中美物理延迟）<br>ICMP 丢包 5%–10%，时段波动剧烈</p></div>
+      <div class="card"><h3>业务形态</h3><div class="big">SSH</div><p>交互式小包 + 偶发批量传输<br>对「最差体验」敏感，而非均值</p></div>
+      <div class="card"><h3>对手参照</h3><div class="big">kcptun</div><p>xtaci/kcp-go 的 Go 实现<br>同参数下被广泛验证的高性能基线</p></div>
+    </div>
+    <p class="lead" style="margin-top:32px">xkcptun：纯 C（ikcp + libevent）。TCP 本地代理 ↔ KCP/UDP 隧道 ↔ 远端 TCP 目标。<br>
+    优化起点的问题：<b style="color:#ff8fa3">同参数对比中，xkcptun 吞吐只有 kcptun 的 1/4。</b></p>
+  </div>
+  <div class="footer"><span>01 背景</span><span>2 / 16</span></div>
+</section>
+
+<!-- S3 方法 -->
+<section class="slide">
+  <div class="kicker">02 · 测试方法</div>
+  <h2>三通道对比，<span class="accent">参数完全对齐</span></h2>
+  <div class="grow">
+    <table>
+      <tr><th>通道</th><th>链路</th><th>入口</th></tr>
+      <tr><td>A · 直连</td><td>本机 → TCP → bwg sshd（BBR+fq）</td><td class="num">ssh bwg</td></tr>
+      <tr><td>B · xkcptun</td><td>TCP:2222 → KCP/UDP:9089 → sshd</td><td class="num">ssh -p 2222 root@192.168.8.226</td></tr>
+      <tr><td>C · kcptun</td><td>TCP:2223 → KCP/UDP:9999 → sshd</td><td class="num">ssh -p 2223 root@127.0.0.1</td></tr>
+    </table>
+    <div class="cards" style="margin-top:28px">
+      <div class="card"><h3>T1 吞吐</h3><p>32MB dd ×5 轮交叉执行<br>中位数 + 最差值</p></div>
+      <div class="card"><h3>T2 交互延迟</h3><p>连接复用下 20 条命令计时<br>排除握手干扰</p></div>
+      <div class="card"><h3>T4 长稳</h3><p>512MB 单次传输<br>中途采样会话健康度</p></div>
+    </div>
+    <p class="lead" style="margin-top:24px">教训：链路时段波动极大（直连单轮从 26s 崩到 4m17s），<b style="color:#fff">必须同时段交叉测量，看最差值而不是均值</b>。</p>
+  </div>
+  <div class="footer"><span>02 方法</span><span>3 / 16</span></div>
+</section>
+
+<!-- S4 起点 -->
+<section class="slide">
+  <div class="kicker">03 · 起点</div>
+  <h2>初次对比：<span class="accent">4 倍差距</span></h2>
+  <div class="grow">
+    <div class="barlabel"><span>kcptun (Go)</span><b>16s · 2.0 MB/s</b></div>
+    <div class="bar"><div style="width:100%;background:#4cc9f0"></div></div>
+    <div class="barlabel"><span>直连 TCP (BBR)</span><b>26–82s · 0.4–1.3 MB/s</b></div>
+    <div class="bar"><div style="width:38%;background:#8d99ae"></div></div>
+    <div class="barlabel"><span>xkcptun (C)</span><b>58–71s · 0.55 MB/s</b></div>
+    <div class="bar"><div style="width:24%;background:#ff8fa3"></div></div>
+    <p class="lead" style="margin-top:20px">更刺眼的是稳定性：直连会断崖崩塌，但 kcptun 纹丝不动。<br>
+    <b style="color:#fff">调参全部无效</b>——窗口 1024→2048 变差、FEC 10+3 变差、mode/fast3、resend、crypt 全试过：<br>
+    <b style="color:#ff8fa3">参数没问题，是数据通路坏了。</b></p>
+  </div>
+  <div class="footer"><span>03 起点</span><span>4 / 16</span></div>
+</section>
+
+<!-- S5 监控 -->
+<section class="slide">
+  <div class="kicker">04 · 排查第一步</div>
+  <h2>先有数据，再谈优化：<span class="accent">给 xkcp_mon 加埋点</span></h2>
+  <div class="grow">
+    <div class="code">./xkcp_spy -h 192.168.8.226 -c -t status
+→ srtt [172ms] rto [188ms] inflight [0] cwnd [5] loss_wnd [770]
+   snd_pkts [47] loss_pkts [1] retrans [0%]</div>
+    <p class="lead" style="margin-top:24px">为每条 KCP 会话导出：RTT 估计、在途包、发送/重传计数、AIMD 窗口。<br>
+    传输中途采样，立刻看到了触目惊心的现场（xkcptun 服务端）：</p>
+    <div class="cards" style="margin-top:18px">
+      <div class="card bad"><div class="big red">97%</div><p>发送的段是重传<br>（39 万包只送达 7500 包）</p></div>
+      <div class="card bad"><div class="big red">1636ms</div><p>srtt 膨胀 10 倍<br>（真实 RTT 只有 171ms）</p></div>
+      <div class="card bad"><div class="big red">144万</div><p>服务端 socket 内核层<br>丢掉的入包数</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>04 监控</span><span>5 / 16</span></div>
+</section>
+
+<!-- S6 根因1 -->
+<section class="slide">
+  <div class="kicker">05 · 根因 ①</div>
+  <h2>每收一个包，flush 整个窗口：<span class="accent">O(N²) 风暴</span></h2>
+  <div class="grow">
+    <div class="code" style="font-size:20px">/* xkcp_server.c —— 每个收到的 UDP 包 */</div>
+    <p class="lead" style="margin-top:16px">重传堆积后，每个到达的包触发一次全窗口 flush（几百个段重新序列化发送），
+    事件循环被自身流量饿死 → 内核收缓冲（仅 425KB）溢出 → <b style="color:#ff8fa3">内核成批丢弃入包，包括我们苦等的 ACK</b> →
+    更多 RTO 重传 → 更堵。恶性循环。</p>
+    <p class="lead" style="margin-top:18px"><b style="color:#7bf1a8">修复</b>：ACK 交给 10ms 定时器统一 flush（延迟 ≤10ms，无感知），收包路径只做 input + 转发。</p>
+  </div>
+  <div class="footer"><span>05 根因①</span><span>6 / 16</span></div>
+</section>
+
+<!-- S7 根因2 -->
+<section class="slide">
+  <div class="kicker">06 · 根因 ②</div>
+  <h2>EAGAIN = 丢包：<span class="accent">C 与 Go 的哲学差异</span></h2>
+  <div class="grow">
+    <div class="cards">
+      <div class="card"><h3>Go (kcptun)</h3><p>socket 写满时，运行时把 goroutine 停住 →<br><b style="color:#7bf1a8">天然的阻塞背压</b>，包一个都不少</p></div>
+      <div class="card"><h3>C (xkcptun，修复前)</h3><p>非阻塞 sendto 返回 EAGAIN →<br><b style="color:#ff8fa3">直接丢弃</b>，KCP 层以为发出去了</p></div>
+    </div>
+    <p class="lead" style="margin-top:24px"><b style="color:#7bf1a8">修复</b>：用户态出口队列。EAGAIN 的包进 evbuffer 排队，
+    注册 UDP socket 的 EV_WRITE，可写时补发——对 KCP 完全透明，把「丢包」变回「排队」。</p>
+    <p class="lead" style="margin-top:14px">同时给 TCP→KCP 入口加背压：发送队列 &gt;256 段暂停读 TCP（窗口回压源头），&lt;64 段恢复。</p>
+  </div>
+  <div class="footer"><span>06 根因②</span><span>7 / 16</span></div>
+</section>
+
+<!-- S8 修复后 -->
+<section class="slide">
+  <div class="kicker">07 · 第一阶段成果</div>
+  <h2>三个修复，<span class="accent">从 60 秒到 15 秒</span></h2>
+  <div class="grow">
+    <div class="barlabel"><span>修复前</span><b>58–71s · 0.55 MB/s</b></div>
+    <div class="bar"><div style="width:87%;background:#ff8fa3"></div></div>
+    <div class="barlabel"><span>修复后（窗口1024）</span><b>14.5–17.4s · 1.9–2.2 MB/s</b></div>
+    <div class="bar"><div style="width:22%;background:#7bf1a8"></div></div>
+    <div class="barlabel"><span>kcptun 参照</span><b>16–26s</b></div>
+    <div class="bar"><div style="width:25%;background:#4cc9f0"></div></div>
+    <p class="lead" style="margin-top:20px">服务端 EAGAIN 计数归零，会话 srtt 回到真实 172ms，inflight 打满 1024 窗口。<br>
+    <b style="color:#fff">追平了。但为什么还超不过？——监控数据给出了下一个答案。</b></p>
+  </div>
+  <div class="footer"><span>07 阶段成果</span><span>8 / 16</span></div>
+</section>
+
+<!-- S9 pacing 根因 -->
+<section class="slide">
+  <div class="kicker">08 · 根因 ③</div>
+  <h2>每 10ms 一次的<span class="accent">窗口级突发</span></h2>
+  <div class="grow">
+    <div class="cards">
+      <div class="card"><h3>ikcp 的发送模型</h3><p>每个 flush tick 倾泻整个窗口<br>1024 包 ≈ <b class="big red" style="font-size:32px">1.35MB / 10ms</b> 的脉冲<br>→ 打爆 transit 路由器浅缓冲 → 突发性丢包</p></div>
+      <div class="card"><h3>实测代价</h3><div class="big red">55%</div><p>批量传输中 55% 的发送段是重传<br>窗口满载，好put却被腰斩</p></div>
+    </div>
+    <p class="lead" style="margin-top:24px"><b style="color:#7bf1a8">修复：pacing</b> —— 新配置项限制每个 tick 的发送段数（本次部署 128 段 ≈ 170KB），
+    配额用尽即停、下个 tick 续发，对段状态零破坏。</p>
+    <p class="lead" style="margin-top:12px">重传率 <b style="color:#7bf1a8">55% → 6%</b>，srtt 回到物理真值 153ms。</p>
+  </div>
+  <div class="footer"><span>08 pacing</span><span>9 / 16</span></div>
+</section>
+
+<!-- S10 其余优化 -->
+<section class="slide">
+  <div class="kicker">09 · 同期优化</div>
+  <h2>监控之外的三项<span class="accent">机制增强</span></h2>
+  <div class="grow">
+    <ul class="big">
+      <li><b>丢包驱动 AIMD 限窗</b>（losscntl）：重传时每 RTT 缩窗 ×0.75，空闲时加性增回。fast3 的 nc=1 不再盲目发射，窗口自动寻找平衡点</li>
+      <li><b>FEC 重构</b>：部分填充的组 100ms 后立即补发 parity（小包交互不再裸奔）；parity 比例每 5s 按实测恢复率自适应，低丢包时冗余趋向 0</li>
+      <li><b>FEC 从负优化变正优化</b>：修复前固定 30% 冗余在丢包雪崩上火上浇油（+13s）；修复后 A/B 实测反而提速（6.6s → 6.2s）</li>
+    </ul>
+  </div>
+  <div class="footer"><span>09 增强</span><span>10 / 16</span></div>
+</section>
+
+<!-- S11 最终数据1 -->
+<section class="slide">
+  <div class="kicker">10 · 最优配置实测</div>
+  <h2>单流吞吐：<span class="accent">xkcptun 全面领先</span></h2>
+  <div class="grow">
+    <div class="barlabel"><span>T1 · 32MB（三通道交叉 ×3，中位）</span></div>
+    <table>
+      <tr><th>通道</th><th class="num">耗时</th><th class="num">吞吐</th><th>备注</th></tr>
+      <tr class="hl"><td>xkcptun（2048窗口+FEC+pacing）</td><td class="num">6.0s</td><td class="num">5.5 MB/s</td><td>最差 7.0s</td></tr>
+      <tr><td>kcptun（2048窗口）</td><td class="num">6.8s</td><td class="num">4.9 MB/s</td><td>最好单轮 5.4s</td></tr>
+      <tr class="bad"><td>直连 TCP（BBR+fq）</td><td class="num">~10.5s</td><td class="num">3.2 MB/s</td><td>最差 17.3s，坏时段曾崩 4m17s</td></tr>
+    </table>
+    <div class="barlabel" style="margin-top:26px"><span>T4 · 512MB 长稳</span></div>
+    <div class="barlabel"><span>xkcptun</span><b>69.3s · 7.7 MB/s</b></div>
+    <div class="bar"><div style="width:100%;background:#7bf1a8"></div></div>
+    <div class="barlabel"><span>kcptun</span><b>80.3s · 6.7 MB/s</b></div>
+    <div class="bar"><div style="width:87%;background:#4cc9f0"></div></div>
+    <div class="barlabel"><span>直连</span><b>108.0s · 5.0 MB/s</b></div>
+    <div class="bar"><div style="width:64%;background:#8d99ae"></div></div>
+  </div>
+  <div class="footer"><span>10 数据</span><span>11 / 16</span></div>
+</section>
+
+<!-- S12 最终数据2 -->
+<section class="slide">
+  <div class="kicker">11 · 最优配置实测</div>
+  <h2>延迟与并发：<span class="accent">持平与反超</span></h2>
+  <div class="grow">
+    <table>
+      <tr><th>指标</th><th>直连</th><th>xkcptun</th><th>kcptun</th></tr>
+      <tr><td>T2 交互延迟（mux 复用 20 cmd 均值）</td><td class="num">359ms</td><td class="num">354ms</td><td class="num">338ms</td></tr>
+      <tr><td>T5 并发 4×16MB</td><td class="num">8.8s</td><td class="num">10.4s*</td><td class="num">11.6s*</td></tr>
+      <tr><td>会话健康（批量中途）</td><td class="num">—</td><td class="num">retrans 6% / srtt 153ms</td><td class="num">—</td></tr>
+      <tr class="bad"><td>坏时段表现（10% 丢包）</td><td class="num">30s～4m17s</td><td class="num">15s（32MB）</td><td class="num">未单测</td></tr>
+    </table>
+    <p class="lead" style="margin-top:26px">*并发数据取自 1024 窗口阶段。交互延迟 ≈ 2×RTT，由物理链路决定，任何隧道都不可能改善——<b style="color:#fff">隧道卖的是稳定性，不是延迟</b>。</p>
+    <p class="lead" style="margin-top:14px">性能改善的本质：同一个窗口，<b style="color:#7bf1a8">有效载荷占比从 ~50% 提升到 ~94%</b>。</p>
+  </div>
+  <div class="footer"><span>11 数据</span><span>12 / 16</span></div>
+</section>
+
+<!-- S13 最优配置 -->
+<section class="slide">
+  <div class="kicker">12 · 最优配置</div>
+  <h2>当前推荐（两端一致，<span class="accent">已在线运行</span>）</h2>
+  <div class="grow">
+    <div class="code">{
+  "mode": "fast3",          <em>// nodelay=1, interval=10, resend=2, nc=1</em>
+  "mtu": 1350,
+  "sndwnd": 2048,  "rcvwnd": 2048,
+  "fec": 1,                 <em>// 部分组 100ms 补 parity + 自适应冗余比</em>
+  "pacing": 128,            <em>// 每 tick 最多 128 段 ≈ 170KB，削平突发</em>
+  "crypt": "none", "nocomp": true
+}</div>
+    <ul class="big" style="margin-top:24px; font-size:21px">
+      <li><b>losscntl</b>（AIMD 限窗）：默认开启；坏时段自动收缩窗口，好时段恢复</li>
+      <li><b>服务器内核</b>：net.core.rmem_max / wmem_max = 16MB（kcptun 官方同样推荐）</li>
+      <li>每项参数都有监控数据背书：<span class="code" style="display:inline;padding:2px 10px;font-size:16px">xkcp_spy -h &lt;ip&gt; -c -t status</span></li>
+    </ul>
+  </div>
+  <div class="footer"><span>12 配置</span><span>13 / 16</span></div>
+</section>
+
+<!-- S14 复盘 -->
+<section class="slide">
+  <div class="kicker">13 · 复盘</div>
+  <h2>四条<span class="accent">方法论</span></h2>
+  <div class="grow">
+    <div class="cards">
+      <div class="card"><h3>1 · 先埋点再调参</h3><p>盲调窗口/FEC 三轮全部无效；一个 status 命令的导出数据，一眼定位 97% 重传</p></div>
+      <div class="card"><h3>2 · 找最强的参照物</h3><p>和 Go 版 kcptun 同参数硬碰硬，4 倍差距就是 3 个 bug 的坐标</p></div>
+      <div class="card"><h3>3 · 同时段交叉测量</h3><p>链路波动 4 倍以上，不交叉的对比全是噪声；看最差值不看均值</p></div>
+      <div class="card"><h3>4 · 差异即线索</h3><p>「Go 阻塞 vs C 丢包」「定时 flush vs 逐包 flush」——每个行为差异背后都是一个设计缺陷</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>13 复盘</span><span>14 / 16</span></div>
+</section>
+
+<!-- S15 提交 -->
+<section class="slide">
+  <div class="kicker">14 · 交付</div>
+  <h2>三个提交，<span class="accent">全部带签名与数据背书</span></h2>
+  <div class="grow">
+    <table>
+      <tr><th>commit</th><th>内容</th><th>效果</th></tr>
+      <tr><td class="num">5c4a8ea</td><td>AIMD 限窗 · 自适应 FEC · 监控埋点</td><td>可观测性 + 自适应基础</td></tr>
+      <tr><td class="num">cecc114</td><td>UDP 出口队列 · TCP 背压 · 去逐包 flush</td><td>0.55 → 2.2 MB/s</td></tr>
+      <tr><td class="num">24427fb</td><td>per-flush pacing</td><td>2.2 → 7.7 MB/s，retrans 55% → 6%</td></tr>
+    </table>
+    <p class="lead" style="margin-top:28px">遗留事项：pacing/losscntl 文档补进 README；服务器 sysctl 持久化；
+    1024 窗口下与 kcptun 尚余 ~13% 差距（调度粒度微效率，优先级低）。</p>
+  </div>
+  <div class="footer"><span>14 交付</span><span>15 / 16</span></div>
+</section>
+
+<!-- S16 结尾 -->
+<section class="slide">
+  <div class="grow" style="align-items:center; text-align:center">
+    <div class="kicker" style="letter-spacing:8px">RESULT</div>
+    <h1 style="font-size:72px">0.55 <span style="color:#55677f">→</span> <span style="color:#7bf1a8">7.7</span> MB/s</h1>
+    <p class="lead" style="margin-top:24px;font-size:28px">14 倍，同一条中美链路，同一个协议栈<br>
+    不靠换协议，不靠加机器 —— 靠把每一个丢掉的包变成排队的包</p>
+    <div style="margin-top:48px"><span class="tag">github.com/liudf0716/xkcptun</span></div>
+  </div>
+  <div class="footer"><span>xkcptun 优化复盘</span><span>16 / 16 · 谢谢观看</span></div>
+</section>
+
+<div class="progress" id="bar"></div>
+<div class="arrow" id="arrow">▶</div>
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let cur = 0;
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => s.classList.toggle('active', k === cur));
+    document.getElementById('bar').style.width = ((cur + 1) / slides.length * 100) + '%';
+  }
+  document.addEventListener('keydown', e => {
+    if (['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)) show(cur + 1);
+    if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key)) show(cur - 1);
+    if (e.key === 'Home') show(0);
+    if (e.key === 'End') show(slides.length - 1);
+  });
+  document.getElementById('arrow').onclick = () => show(cur + 1);
+  document.addEventListener('click', e => { if (!e.target.closest('.arrow')) show(cur + 1); });
+  show(0);
+</script>
+</body>
+</html>
