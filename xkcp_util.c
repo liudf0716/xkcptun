@@ -102,33 +102,37 @@ char *get_iface_ip(const char *ifname)
 	int sockd;
 	u_int32_t ip;
 
+	if (!ifname || strlen(ifname) == 0) {
+		return strdup("0.0.0.0");
+	}
+
 	/* Create a socket */
 	if ((sockd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
 		debug(LOG_ERR, "socket(): %s", strerror(errno));
-		return NULL;
+		return strdup("0.0.0.0");
 	}
 
 	/* Get IP of internal interface */
-	strncpy(if_data.ifr_name, ifname, 15);
-	if_data.ifr_name[15] = '\0';
+	memset(&if_data, 0, sizeof(if_data));
+	strncpy(if_data.ifr_name, ifname, sizeof(if_data.ifr_name) - 1);
 
 	/* Get the IP address */
 	if (ioctl(sockd, SIOCGIFADDR, &if_data) < 0) {
-		debug(LOG_ERR, "ioctl(): SIOCGIFADDR %s", strerror(errno));
+		debug(LOG_DEBUG, "ioctl(): SIOCGIFADDR for [%s] failed (%s), fallback to 0.0.0.0",
+		      ifname, strerror(errno));
 		close(sockd);
-		return NULL;
+		return strdup("0.0.0.0");
 	}
 	memcpy((void *)&ip, (void *)&if_data.ifr_addr.sa_data + 2, 4);
 	in.s_addr = ip;
 
 	close(sockd);
 	ip_str = malloc(HTTP_IP_ADDR_LEN);
-	memset(ip_str, 0, HTTP_IP_ADDR_LEN);
-	if(ip_str&&inet_ntop(AF_INET, &in, ip_str, HTTP_IP_ADDR_LEN))
+	if (ip_str && inet_ntop(AF_INET, &in, ip_str, HTTP_IP_ADDR_LEN))
 		return ip_str;
 
 	if (ip_str) free(ip_str);
-	return NULL;
+	return strdup("0.0.0.0");
 }
 
 static void
@@ -737,12 +741,45 @@ void xkcp_task_check_timeout(iqueue_head *task_list)
 	}
 }
 
+static struct event *g_sigterm_ev = NULL;
+static struct event *g_sigint_ev = NULL;
+
 void xkcp_setup_signals(struct event_base *base)
 {
-	struct event *sigterm_ev = evsignal_new(base, SIGTERM, sigterm_cb, base);
-	struct event *sigint_ev = evsignal_new(base, SIGINT, sigterm_cb, base);
-	event_add(sigterm_ev, NULL);
-	event_add(sigint_ev, NULL);
+	g_sigterm_ev = evsignal_new(base, SIGTERM, sigterm_cb, base);
+	g_sigint_ev = evsignal_new(base, SIGINT, sigterm_cb, base);
+	if (g_sigterm_ev)
+		event_add(g_sigterm_ev, NULL);
+	if (g_sigint_ev)
+		event_add(g_sigint_ev, NULL);
+}
+
+void xkcp_cleanup_signals(void)
+{
+	if (g_sigterm_ev) {
+		event_del(g_sigterm_ev);
+		event_free(g_sigterm_ev);
+		g_sigterm_ev = NULL;
+	}
+	if (g_sigint_ev) {
+		event_del(g_sigint_ev);
+		event_free(g_sigint_ev);
+		g_sigint_ev = NULL;
+	}
+}
+
+void xkcp_cleanup_udp_queue(void)
+{
+	if (g_udp_wev) {
+		event_del(g_udp_wev);
+		event_free(g_udp_wev);
+		g_udp_wev = NULL;
+		g_udp_wev_active = 0;
+	}
+	if (g_udp_pend) {
+		evbuffer_free(g_udp_pend);
+		g_udp_pend = NULL;
+	}
 }
 
 struct evconnlistener *xkcp_create_listener(struct event_base *base, short port, void *ptr)

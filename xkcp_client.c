@@ -144,48 +144,63 @@ static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, vo
 	return listener;
 }
 
+static void client_task_list_free(void)
+{
+	struct xkcp_task *task;
+	iqueue_head *p, *n;
+
+	for (p = xkcp_task_list.next, n = p->next; p != &xkcp_task_list; p = n, n = p->next) {
+		task = iqueue_entry(p, struct xkcp_task, head);
+		if (task->kcp) {
+			ikcp_flush(task->kcp);
+			ikcp_release(task->kcp);
+			task->kcp = NULL;
+		}
+		if (task->bev) {
+			bufferevent_free(task->bev);
+			task->bev = NULL;
+		}
+		iqueue_del(&task->head);
+		free(task);
+	}
+}
+
 int client_main_loop(void)
 {
+	struct event timer_event, *xkcp_event = NULL;
+	struct hostent *server = NULL;
 	struct event_base *base = NULL;
 	struct evconnlistener *listener = NULL, *mlistener = NULL;
-	int xkcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-	struct event timer_event, *xkcp_event;
-
-	if (xkcp_fd < 0) {
-		debug(LOG_ERR, "ERROR, open udp socket");
-		exit(EXIT_FAILURE);
-	}
-
-	if (fcntl(xkcp_fd, F_SETFL, O_NONBLOCK) == -1) {
-		debug(LOG_ERR, "ERROR, fcntl error: %s", strerror(errno));
-		close(xkcp_fd);
-		exit(EXIT_FAILURE);
-	}
-
-	xkcp_apply_sockbuf(xkcp_fd);
-
-
-	struct hostent *server = gethostbyname(xkcp_get_param()->remote_addr);
-	if (!server) {
-		debug(LOG_ERR, "ERROR, no such host as %s", xkcp_get_param()->remote_addr);
-		close(xkcp_fd);
-		exit(EXIT_FAILURE);
-	}
 
 	base = event_base_new();
 	if (!base) {
-		debug(LOG_ERR, "event_base_new()");
-		close(xkcp_fd);
+		debug(LOG_ERR, "event_base_new() failed");
 		exit(EXIT_FAILURE);
 	}
 
 	g_exit_base = base;
 	xkcp_set_event_base(base);
 
-	struct xkcp_param *xparam = xkcp_get_param();
-	if (xparam->fec) {
-		int cap = xparam->mtu > 0 ? xparam->mtu : 1350;
-		g_fec = fec_conn_new(xparam->data_shard, xparam->parity_shard, cap);
+	int xkcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (xkcp_fd < 0) {
+		debug(LOG_ERR, "create udp socket failed");
+		exit(EXIT_FAILURE);
+	}
+
+	evutil_make_socket_nonblocking(xkcp_fd);
+	xkcp_apply_sockbuf(xkcp_fd);
+
+	server = gethostbyname(xkcp_get_param()->remote_addr);
+	if (!server) {
+		debug(LOG_ERR, "gethostbyname [%s] failed", xkcp_get_param()->remote_addr);
+		exit(EXIT_FAILURE);
+	}
+
+	if (xkcp_get_param()->fec) {
+		int cap = xkcp_get_param()->mtu > 0 ? xkcp_get_param()->mtu : 1350;
+		g_fec = fec_conn_new(xkcp_get_param()->data_shard,
+				     xkcp_get_param()->parity_shard,
+				     cap);
 		if (!g_fec)
 			debug(LOG_ERR, "fec_conn_new failed, running without FEC");
 	}
@@ -213,9 +228,18 @@ int client_main_loop(void)
 
 	event_base_dispatch(base);
 
+	event_del(&timer_event);
+	if (xkcp_event) {
+		event_del(xkcp_event);
+		event_free(xkcp_event);
+		xkcp_event = NULL;
+	}
+	xkcp_cleanup_signals();
+	xkcp_cleanup_udp_queue();
 	evconnlistener_free(mlistener);
 	evconnlistener_free(listener);
 	close(xkcp_fd);
+	client_task_list_free();
 	event_base_free(base);
 	fec_conn_free(g_fec);
 

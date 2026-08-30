@@ -461,13 +461,21 @@ int server_main_loop()
 	xkcp_setup_signals(base);
 
 	event_base_dispatch(base);
-	
+
+	event_del(&timer_event);
+	if (xkcp_event) {
+		event_del(xkcp_event);
+		event_free(xkcp_event);
+		xkcp_event = NULL;
+	}
+	xkcp_cleanup_signals();
+	xkcp_cleanup_udp_queue();
 	delete_hash(fec_hash, (void *)fec_conn_free, HASHPTR/*value*/, HASHSTRING/*key*/);
 	delete_hash(xkcp_hash, (void*)task_list_free, HASHPTR/*value*/, HASHSTRING/*key*/);
 	evconnlistener_free(mon_listener);
 	close(xkcp_fd);
 	event_base_free(base);
-	
+
 	return 0;
 }
 

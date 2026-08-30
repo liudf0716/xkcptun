@@ -101,6 +101,10 @@ int xkcp_main(int argc, char **argv);
 
 void xkcp_setup_signals(struct event_base *base);
 
+void xkcp_cleanup_signals(void);
+
+void xkcp_cleanup_udp_queue(void);
+
 struct evconnlistener *xkcp_create_listener(struct event_base *base, short port, void *ptr);
 
 #endif
