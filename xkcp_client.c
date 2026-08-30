@@ -74,8 +74,8 @@ static void client_handle_packet(char *buf, int nrecv)
 	if (ikcp_input(task->kcp, buf, nrecv) < 0)
 		debug(LOG_INFO, "conv [%u] ikcp_input failed", conv);
 
-	xkcp_forward_data(task);
 	ikcp_flush(task->kcp);
+	xkcp_forward_data(task);
 }
 
 static void fec_deliver_pkt(void *user, const char *pkt, int len)

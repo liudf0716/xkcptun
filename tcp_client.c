@@ -42,26 +42,6 @@
 #include "ikcp.h"
 #include "jwHash.h"
 
-// Remove hash entries whose task list has become empty. Deletion goes
-// through del_by_str() so the table's own bookkeeping stays consistent.
-static void clean_useless_client()
-{
-	jwHashTable *table = get_xkcp_hash();
-	for(int i = 0; i < table->buckets; i++) {
-		jwHashEntry *entry = table->bucket[i];
-		while(entry) {
-			jwHashEntry *next = entry->next;
-			iqueue_head *list = entry->value.ptrValue;
-			if (list && iqueue_is_empty(list)) {
-				free(list);
-				/* also drop the per-peer FEC codec for the same key */
-				xkcp_server_drop_peer_fec(entry->key.strValue);
-				del_by_str(table, entry->key.strValue);
-			}
-			entry = next;
-		}
-	}
-}
 
 void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 {

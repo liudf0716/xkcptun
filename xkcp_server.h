@@ -13,4 +13,7 @@ struct jwHashTable * get_xkcp_hash();
  * No-op when FEC is disabled or no codec exists for the key. */
 void xkcp_server_drop_peer_fec(const char *key);
 
+/* Clean up empty task lists and associated hash entries in xkcp_hash */
+void clean_useless_client(void);
+
 #endif

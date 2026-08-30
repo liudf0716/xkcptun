@@ -255,6 +255,11 @@ static void udp_pend_drain_cb(evutil_socket_t fd, short what, void *arg)
 
 		evbuffer_remove(g_udp_pend, &sa, sizeof(sa));
 		evbuffer_remove(g_udp_pend, &len, sizeof(len));
+		if (len > sizeof(buf)) {
+			/* packet exceeds buffer size, drop payload */
+			evbuffer_drain(g_udp_pend, len);
+			continue;
+		}
 		evbuffer_remove(g_udp_pend, buf, len);
 
 		nret = sendto(fd, buf, len, 0, (struct sockaddr *)&sa, sizeof(sa));
@@ -267,8 +272,10 @@ static void udp_pend_drain_cb(evutil_socket_t fd, short what, void *arg)
 	}
 
 	/* fully drained: stop polling writability */
-	event_del(g_udp_wev);
-	g_udp_wev_active = 0;
+	if (g_udp_wev_active) {
+		event_del(g_udp_wev);
+		g_udp_wev_active = 0;
+	}
 }
 
 void xkcp_enqueue_udp_at(evutil_socket_t fd, const struct sockaddr_in *sa,
@@ -278,7 +285,7 @@ void xkcp_enqueue_udp_at(evutil_socket_t fd, const struct sockaddr_in *sa,
 
 	if (!g_udp_pend) {
 		g_udp_pend = evbuffer_new();
-		g_udp_wev = event_new(g_evbase, fd, EV_WRITE, udp_pend_drain_cb, NULL);
+		g_udp_wev = event_new(g_evbase, fd, EV_WRITE|EV_PERSIST, udp_pend_drain_cb, NULL);
 	}
 
 	if (evbuffer_get_length(g_udp_pend) > UDP_PEND_MAX)
@@ -484,8 +491,10 @@ void dump_task_list(iqueue_head *task_list, struct bufferevent *bev) {
 
 void xkcp_forward_all_data(iqueue_head *task_list)
 {
-	struct xkcp_task *task;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+	iqueue_head *p, *n;
+	for (p = task_list->next; p != task_list; p = n) {
+		n = p->next;
+		struct xkcp_task *task = iqueue_entry(p, struct xkcp_task, head);
 		if (task->kcp) {
 			xkcp_forward_data(task);
 		}
@@ -540,12 +549,23 @@ void xkcp_forward_data(struct xkcp_task *task)
 
 		if (nrecv == XKCP_CLOSE_SIGNAL_LEN && memcmp(obuf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
 			debug(LOG_INFO, "conv [%u] received close signal", task->kcp->conv);
+			free(heapbuf);
+			struct xkcp_proxy_param *param = NULL;
+			if (task->user_owned)
+				param = (struct xkcp_proxy_param *)task->kcp->user;
+
 			if (task->bev) {
+				bufferevent_setcb(task->bev, NULL, NULL, NULL, NULL);
 				bufferevent_free(task->bev);
 				task->bev = NULL;
 			}
-			free(heapbuf);
-			break;
+			ikcp_release(task->kcp);
+			task->kcp = NULL;
+			del_task(task);
+			if (param)
+				free(param);
+			free(task);
+			return;
 		}
 
 		if (task->bev)

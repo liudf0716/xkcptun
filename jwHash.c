@@ -137,9 +137,12 @@ void delete_hash( jwHashTable *table,  hashtable_free_item_callback free_cb, HAS
 		}
 	}
 
+#ifdef HASHTHREADED
+	if (table->locks)
+		free(table->locks);
+#endif
 	free(table->bucket);
-	table->bucket = NULL;
-	table->buckets = 0;
+	free(table);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

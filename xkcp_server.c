@@ -104,6 +104,27 @@ void xkcp_server_drop_peer_fec(const char *key)
 	fec_conn_free(f);
 }
 
+void clean_useless_client(void)
+{
+	jwHashTable *table = get_xkcp_hash();
+	if (!table)
+		return;
+	for(int i = 0; i < table->buckets; i++) {
+		jwHashEntry *entry = table->bucket[i];
+		while(entry) {
+			jwHashEntry *next = entry->next;
+			iqueue_head *list = entry->value.ptrValue;
+			if (list && iqueue_is_empty(list)) {
+				free(list);
+				/* also drop the per-peer FEC codec for the same key */
+				xkcp_server_drop_peer_fec(entry->key.strValue);
+				del_by_str(table, entry->key.strValue);
+			}
+			entry = next;
+		}
+	}
+}
+
 /* peers silent longer than this get their codec freed; must exceed
  * conn_timeout so a live-but-idle session never loses its decoder */
 #define FEC_PEER_IDLE_MS	(120 * 1000)
@@ -152,6 +173,8 @@ static void server_tick_task_list(iqueue_head *task_list)
 static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
 	hash_iterator(xkcp_hash, (void*)xkcp_update_task_list, HASHPTR);
+	hash_iterator(xkcp_hash, (void*)xkcp_task_check_timeout, HASHPTR);
+	clean_useless_client();
 	hash_iterator(xkcp_hash, (void*)server_tick_task_list, HASHPTR);
 	sweep_idle_peer_fec();
 

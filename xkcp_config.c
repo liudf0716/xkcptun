@@ -250,7 +250,10 @@ int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
 			for (e = config_table; e->name != NULL; e++) {
 				if (strcmp(name, e->name) == 0) {
 					if (e->type == CFG_STR) {
-						*(char **)((char *)param + e->offset) = parse_json_string(value);
+						char **str_ptr = (char **)((char *)param + e->offset);
+						if (*str_ptr)
+							free(*str_ptr);
+						*str_ptr = parse_json_string(value);
 					} else {
 						*(int *)((char *)param + e->offset) = parse_json_int(value);
 					}
