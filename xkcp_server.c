@@ -197,6 +197,9 @@ static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, c
 	task->bev = NULL;
 	task->sockaddr = &param->sockaddr;
 	task->last_active = iclock();
+	task->user_owned = 1;
+	task->conv = conv;
+	task->tunnel = tunnel;
 	task->handshake_done = 0;
 	task->target_host[0] = '\0';
 	task->target_port = 0;

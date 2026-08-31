@@ -1,32 +1,17 @@
-# ========================================================
-# xkcptun Server Configuration (TOML Format)
-# ========================================================
-
-# 全局公共参数
 [global]
 syslog = true
 mon_port = 9087
-
-# KCP / FEC 传输参数
 mode = "fast3"
-mtu = 1350
-sndwnd = 2048
-rcvwnd = 2048
+sndwnd = 4096
+rcvwnd = 512
+pacing = 0
 fec = 1
-datashard = 10
-parityshard = 3
-pacing = 128
-lossctrl = 0
-sockbuf = 4194304
-keepalive = 10
-conntimeout = 60
+data_shard = 10
+parity_shard = 3
+sock_buf = 16777216
 
-# ========================================================
-# 服务端 UDP 监听入口（支持动态目标首包协商）
-# ========================================================
 [[tunnel]]
-name = "main_server"
-local_interface = "0.0.0.0"
+name = "ssh_tunnel"
 local_port = 9089
-remote_addr = "127.0.0.1"    # 默认回退目标主机（当客户端未发送动态目标时使用）
-remote_port = 22             # 默认回退目标端口
+remote_addr = "127.0.0.1"
+remote_port = 27334
