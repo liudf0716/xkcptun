@@ -21,17 +21,23 @@
 #ifndef	_XKCP_CONFIG_
 #define	_XKCP_CONFIG_
 
-#include <stddef.h>
+#include <stdint.h>
 
 struct xkcp_param {
-	char	*name;              // tunnel identifier / name (e.g. "k_bwg")
-	char	*local_interface; 	// local interface (e.g. "br-lan")
-	char	*remote_addr; 	    // remote host / IP
-	char	*key;			    // key (compat)
-	char	*crypt;			    // crypt (compat)
-	char	*mode;			    // mode preset (fast3/fast2/fast/normal)
-	int		local_port;		    // local port (TCP listen on client, UDP listen on server)
-	int		remote_port;	    // remote port (UDP connect on client, TCP target on server)
+	char 	*name;			    // tunnel identifier name / alias
+	char	*local_interface;   // local interface to bind
+	int		local_port; 	    // local listen port
+	char	*remote_addr;	    // remote server host (client) or backend host (server)
+	int		remote_port;	    // remote server port (client) or backend port (server)
+
+	/* Dynamic Destination */
+	char	*target_addr;	    // dynamic destination host on remote side
+	int		target_port;	    // dynamic destination port on remote side
+	int		dynamic_target;	    // 1 = enable dynamic destination first-packet header
+
+	char	*key;			    // key
+	char	*crypt; 		    // crypt
+	char	*mode;			    // mode
 	int 	conn;			    // conn (compat)
 	int 	auto_expire;	    // autoexpire (compat)
 	int 	scavenge_ttl;	    // scavengettl (compat)
@@ -58,16 +64,16 @@ struct xkcp_param {
 struct xkcp_config {
 	char 	*config_file;
 	int 	daemon;
-	int		is_server;
-	int     syslog;
-	int     mon_port;           // unified monitor port for xkcp_spy
-	int		(*main_loop)(void);
+	int 	is_server;
+	int 	syslog;
+	int 	mon_port;
+	int 	(*main_loop)(void);
 
-	/* Multi-tunnel list */
-	int     num_tunnels;
+	/* Multi-tunnel definitions */
+	int 	num_tunnels;
 	struct xkcp_param *tunnels;
 
-	/* Default param (for single-tunnel or command-line invocation) */
+	/* Default param template (from [global] or command-line) */
 	struct xkcp_param param;
 };
 
@@ -78,6 +84,8 @@ struct xkcp_config *xkcp_get_config(void);
 struct xkcp_param *xkcp_get_param(void);
 
 void xkcp_param_init(struct xkcp_param *param);
+
+void xkcp_param_clone(struct xkcp_param *dst, const struct xkcp_param *src);
 
 void xkcp_param_free(struct xkcp_param *param);
 

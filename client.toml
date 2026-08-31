@@ -2,18 +2,16 @@
 # xkcptun Client Configuration (TOML Format)
 # ========================================================
 
-# 全局选项
+# 全局公共参数（所有隧道默认继承此处的服务器地址与 KCP 调优参数）
 [global]
 syslog = true
 mon_port = 9086
 
-# 隧道配置列表
-[[tunnel]]
-name = "k_bwg"
-local_interface = "br-lan"
-local_port = 2222
+# 远端服务器连接配置
 remote_addr = "172.96.252.145"
 remote_port = 9089
+
+# KCP / FEC 传输参数
 mode = "fast3"
 mtu = 1350
 sndwnd = 2048
@@ -26,3 +24,21 @@ lossctrl = 0
 sockbuf = 4194304
 keepalive = 10
 conntimeout = 60
+
+# ========================================================
+# 隧道列表：只需指定本地入口端口与远端目标服务端口（动态首包协商）
+# ========================================================
+
+# 隧道 1：SSH 加速（本地 2222 -> 服务端 127.0.0.1:22）
+[[tunnel]]
+name = "ssh_tunnel"
+local_interface = "br-lan"
+local_port = 2222
+target_port = 22
+
+# 隧道 2：Web 加速（本地 8080 -> 服务端 127.0.0.1:80）
+[[tunnel]]
+name = "web_tunnel"
+local_interface = "br-lan"
+local_port = 8080
+target_port = 80
