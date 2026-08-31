@@ -1,6 +1,6 @@
 #ifndef	_VERSION_
 #define	_VERSION_
 
-#define	VERSION		"1.08.520"
+#define	VERSION		"1.08.521"
 
 #endif

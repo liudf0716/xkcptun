@@ -50,6 +50,9 @@ static void get_client_list(struct bufferevent *bev, void *ctx, const char *arg)
 static void get_client_status(struct bufferevent *bev, void *ctx, const char *arg);
 static void get_server_list(struct bufferevent *bev, void *ctx, const char *arg);
 static void get_server_status(struct bufferevent *bev, void *ctx, const char *arg);
+static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx);
+static void xkcp_mon_write_cb(struct bufferevent *bev, void *ctx);
+static void xkcp_mon_event_cb(struct bufferevent *bev, short what, void *ctx);
 
 struct user_spy_cmd client_cmd[] = {
 	{"list", get_client_list},
@@ -168,13 +171,18 @@ static void process_user_cmd(struct bufferevent *bev, const char *cmd_line, void
 	for (int i = 0; table[i].command != NULL; i++) {
 		if (strcmp(cmd, table[i].command) == 0) {
 			table[i].cmd_process(bev, ctx, arg);
+			bufferevent_setcb(bev, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, ctx);
+			bufferevent_enable(bev, EV_WRITE);
 			return;
 		}
 	}
 
 	/* Default fallback for bare "status" or empty command */
-	if (table[0].cmd_process)
+	if (table[0].cmd_process) {
 		table[0].cmd_process(bev, ctx, arg);
+		bufferevent_setcb(bev, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, ctx);
+		bufferevent_enable(bev, EV_WRITE);
+	}
 }
 
 static void xkcp_mon_event_cb(struct bufferevent *bev, short what, void *ctx)
@@ -225,8 +233,8 @@ void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
 	assert(b_in);
 	
-	bufferevent_setcb(b_in, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, ptr);
-	bufferevent_enable(b_in,  EV_READ | EV_WRITE);
+	bufferevent_setcb(b_in, xkcp_mon_read_cb, NULL, xkcp_mon_event_cb, ptr);
+	bufferevent_enable(b_in,  EV_READ);
 }
 
 struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, short port, void *ptr)
