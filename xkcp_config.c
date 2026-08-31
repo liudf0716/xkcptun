@@ -23,16 +23,17 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <strings.h>
-
 #include <syslog.h>
 
-#include "json.h"
+#include <errno.h>
+
+#include "toml.h"
 #include "debug.h"
 #include "xkcp_config.h"
 
 static struct xkcp_config config;
 
-struct xkcp_config * xkcp_get_config(void)
+struct xkcp_config *xkcp_get_config(void)
 {
 	return &config;
 }
@@ -42,9 +43,10 @@ struct xkcp_param *xkcp_get_param(void)
 	return &config.param;
 }
 
-static void xkcp_param_init(struct xkcp_param *param)
+void xkcp_param_init(struct xkcp_param *param)
 {
-	memset(&config.param, 0, sizeof(struct xkcp_param));
+	memset(param, 0, sizeof(struct xkcp_param));
+	param->name = NULL;
 	param->local_interface = NULL;
 	param->remote_addr = NULL;
 	param->key = NULL;
@@ -71,114 +73,22 @@ static void xkcp_param_init(struct xkcp_param *param)
 	param->conn_timeout = 60;
 }
 
-void config_init()
+void config_init(void)
 {
-	config.daemon 		= 1;
-	config.is_server 	= 0;
+	memset(&config, 0, sizeof(struct xkcp_config));
+	config.daemon = 1;
+	config.is_server = 0;
+	config.syslog = 0;
+	config.mon_port = 0;
+	config.num_tunnels = 0;
+	config.tunnels = NULL;
 
 	xkcp_param_init(&config.param);
 }
 
-#if 0
-void xkcp_param_free(struct xkcp_param *param)
+void xkcp_apply_mode_param(struct xkcp_param *param)
 {
-	if (param->local_interface)
-		free(param->local_interface);
-
-	if (param->remote_addr)
-		free(param->remote_addr);
-
-	if (param->key)
-		free(param->key);
-
-	if (param->crypt)
-		free(param->crypt);
-
-	if (param->mode)
-		free(param->mode);
-}
-#endif
-
-static int parse_json_int(const json_value *value)
-{
-	if (value->type == json_integer) {
-		return value->u.integer;
-	} else if (value->type == json_boolean) {
-		return value->u.boolean;
-	} else {
-		debug(LOG_ERR, "Need type :%d or %d, now get wrong type: %d", json_integer, json_boolean, value->type);
-		debug(LOG_ERR, "Invalid config format.");
-	}
-	return 0;
-}
-
-static char * parse_json_string(const json_value *value)
-{
-	if (value->type == json_string) {
-		return strdup(value->u.string.ptr);
-	} else if (value->type == json_null) {
-		return NULL;
-	} else {
-		debug(LOG_ERR, "Need type :%d or %d, now get wrong type: %d", json_string, json_null, value->type);
-		debug(LOG_ERR, "Invalid config format.");
-	}
-	return 0;
-}
-
-enum config_type { CFG_STR, CFG_INT };
-
-struct config_entry {
-	const char *name;
-	enum config_type type;
-	size_t offset;
-};
-
-static struct config_entry config_table[] = {
-	{"localinterface", CFG_STR,  offsetof(struct xkcp_param, local_interface)},
-	{"localport",      CFG_INT,  offsetof(struct xkcp_param, local_port)},
-	{"remoteaddr",     CFG_STR,  offsetof(struct xkcp_param, remote_addr)},
-	{"remoteport",     CFG_INT,  offsetof(struct xkcp_param, remote_port)},
-	{"key",            CFG_STR,  offsetof(struct xkcp_param, key)},
-	{"crypt",          CFG_STR,  offsetof(struct xkcp_param, crypt)},
-	{"mode",           CFG_STR,  offsetof(struct xkcp_param, mode)},
-	{"conn",           CFG_INT,  offsetof(struct xkcp_param, conn)},
-	{"autoexpire",     CFG_INT,  offsetof(struct xkcp_param, auto_expire)},
-	{"scavengettl",    CFG_INT,  offsetof(struct xkcp_param, scavenge_ttl)},
-	{"mtu",            CFG_INT,  offsetof(struct xkcp_param, mtu)},
-	{"sndwnd",         CFG_INT,  offsetof(struct xkcp_param, sndwnd)},
-	{"rcvwnd",         CFG_INT,  offsetof(struct xkcp_param, rcvwnd)},
-	{"datashard",      CFG_INT,  offsetof(struct xkcp_param, data_shard)},
-	{"parityshard",    CFG_INT,  offsetof(struct xkcp_param, parity_shard)},
-	{"dscp",           CFG_INT,  offsetof(struct xkcp_param, dscp)},
-	{"nocomp",         CFG_INT,  offsetof(struct xkcp_param, nocomp)},
-	{"acknodelay",     CFG_INT,  offsetof(struct xkcp_param, ack_nodelay)},
-	{"nodelay",        CFG_INT,  offsetof(struct xkcp_param, nodelay)},
-	{"interval",       CFG_INT,  offsetof(struct xkcp_param, interval)},
-	{"resend",         CFG_INT,  offsetof(struct xkcp_param, resend)},
-	{"nc",             CFG_INT,  offsetof(struct xkcp_param, nc)},
-	{"lossctrl",       CFG_INT,  offsetof(struct xkcp_param, loss_ctrl)},
-	{"pacing",         CFG_INT,  offsetof(struct xkcp_param, pacing)},
-	{"fec",            CFG_INT,  offsetof(struct xkcp_param, fec)},
-	{"sockbuf",        CFG_INT,  offsetof(struct xkcp_param, sock_buf)},
-	{"keepalive",      CFG_INT,  offsetof(struct xkcp_param, keepalive)},
-	{"conntimeout",    CFG_INT,  offsetof(struct xkcp_param, conn_timeout)},
-	{NULL, 0, 0}
-};
-
-int xkcp_parse_param(const char *filename)
-{
-	return xkcp_parse_json_param(&config.param, filename);
-}
-
-/* Apply kcptun-compatible mode presets. When "mode" is set it overrides
- * the four KCP tuning knobs (nodelay/interval/resend/nc), matching the
- * behavior of xtaci/kcptun. Call after config file and command line are
- * both parsed. */
-void xkcp_apply_mode(void)
-{
-	struct xkcp_param *param = xkcp_get_param();
-
-	if (!param->mode)
+	if (!param || !param->mode)
 		return;
 
 	if (!strcasecmp(param->mode, "fast3")) {
@@ -189,87 +99,176 @@ void xkcp_apply_mode(void)
 		param->nodelay = 0; param->interval = 20; param->resend = 2; param->nc = 0;
 	} else if (!strcasecmp(param->mode, "normal")) {
 		param->nodelay = 0; param->interval = 30; param->resend = 2; param->nc = 0;
+	} else if (!strcasecmp(param->mode, "manual")) {
+		/* user-specified custom knobs, do not override */
 	} else {
-		debug(LOG_ERR, "unknown mode [%s], ignored (valid: fast3/fast2/fast/normal)",
+		debug(LOG_ERR, "unknown mode [%s], ignored (valid: fast3/fast2/fast/normal/manual)",
 			  param->mode);
 	}
 }
 
-// 1: error; 0, success
-int xkcp_parse_json_param(struct xkcp_param *param, const char *filename)
+void xkcp_apply_mode(void)
 {
-	if (!param)
-		return 1;
-
-	char * buf;
-	json_value *obj;
-
-	FILE *f = fopen(filename, "rb");
-	if (f == NULL) {
-		debug(LOG_ERR, "Invalid config path.");
-		return 1;
-	}
-
-	fseek(f, 0, SEEK_END);
-	long pos = ftell(f);
-	fseek(f, 0, SEEK_SET);
-
-	buf = malloc(pos + 1);
-	if (buf == NULL) {
-		debug(LOG_ERR, "No enough memory.");
-		fclose(f);
-		return 1;
-	}
-
-	int nread = fread(buf, pos, 1, f);
-	fclose(f);
-	if (!nread) {
-		debug(LOG_ERR, "Failed to read the config file.");
-		free(buf);
-		return 1;
-	}
-
-	buf[pos] = '\0'; // end of string
-
-	json_settings settings = { 0UL, 0, NULL, NULL, NULL };
-	char error_buf[512];
-	obj = json_parse_ex(&settings, buf, pos, error_buf);
-
-	if (obj == NULL) {
-		debug(LOG_ERR, "%s", error_buf);
-		free(buf);
-		return 1;
-	}
-
-	if (obj->type == json_object) {
-		unsigned int i;
-		for (i = 0; i < obj->u.object.length; i++) {
-			char *name		= obj->u.object.values[i].name;
-			json_value *value = obj->u.object.values[i].value;
-			struct config_entry *e;
-			for (e = config_table; e->name != NULL; e++) {
-				if (strcmp(name, e->name) == 0) {
-					if (e->type == CFG_STR) {
-						char **str_ptr = (char **)((char *)param + e->offset);
-						if (*str_ptr)
-							free(*str_ptr);
-						*str_ptr = parse_json_string(value);
-					} else {
-						*(int *)((char *)param + e->offset) = parse_json_int(value);
-					}
-					break;
-				}
-			}
+	if (config.num_tunnels > 0 && config.tunnels) {
+		for (int i = 0; i < config.num_tunnels; i++) {
+			xkcp_apply_mode_param(&config.tunnels[i]);
 		}
 	} else {
-		debug(LOG_ERR, "Invalid config file");
-		free(buf);
-		json_value_free(obj);
+		xkcp_apply_mode_param(&config.param);
+	}
+}
+
+static void parse_string_opt(toml_table_t *tab, const char *key1, const char *key2, char **dst)
+{
+	toml_datum_t d = toml_string_in(tab, key1);
+	if (!d.ok && key2) d = toml_string_in(tab, key2);
+	if (d.ok) {
+		if (*dst) free(*dst);
+		*dst = d.u.s;
+	}
+}
+
+static void parse_int_opt(toml_table_t *tab, const char *key1, const char *key2, int *dst)
+{
+	toml_datum_t d = toml_int_in(tab, key1);
+	if (!d.ok && key2) d = toml_int_in(tab, key2);
+	if (d.ok) {
+		*dst = (int)d.u.i;
+		return;
+	}
+	/* Also check bool in case user used true/false for 1/0 */
+	d = toml_bool_in(tab, key1);
+	if (!d.ok && key2) d = toml_bool_in(tab, key2);
+	if (d.ok) {
+		*dst = d.u.b ? 1 : 0;
+	}
+}
+
+static void parse_tunnel_table(toml_table_t *tab, struct xkcp_param *param)
+{
+	if (!tab || !param) return;
+
+	parse_string_opt(tab, "name", NULL, &param->name);
+	parse_string_opt(tab, "local_interface", "localinterface", &param->local_interface);
+	parse_int_opt(tab, "local_port", "localport", &param->local_port);
+	parse_string_opt(tab, "remote_addr", "remoteaddr", &param->remote_addr);
+	parse_int_opt(tab, "remote_port", "remoteport", &param->remote_port);
+	parse_string_opt(tab, "key", NULL, &param->key);
+	parse_string_opt(tab, "crypt", NULL, &param->crypt);
+	parse_string_opt(tab, "mode", NULL, &param->mode);
+
+	parse_int_opt(tab, "conn", NULL, &param->conn);
+	parse_int_opt(tab, "auto_expire", "autoexpire", &param->auto_expire);
+	parse_int_opt(tab, "scavenge_ttl", "scavengettl", &param->scavenge_ttl);
+	parse_int_opt(tab, "mtu", NULL, &param->mtu);
+	parse_int_opt(tab, "sndwnd", NULL, &param->sndwnd);
+	parse_int_opt(tab, "rcvwnd", NULL, &param->rcvwnd);
+	parse_int_opt(tab, "data_shard", "datashard", &param->data_shard);
+	parse_int_opt(tab, "parity_shard", "parityshard", &param->parity_shard);
+	parse_int_opt(tab, "dscp", NULL, &param->dscp);
+	parse_int_opt(tab, "nocomp", NULL, &param->nocomp);
+	parse_int_opt(tab, "ack_nodelay", "acknodelay", &param->ack_nodelay);
+	parse_int_opt(tab, "nodelay", NULL, &param->nodelay);
+	parse_int_opt(tab, "interval", NULL, &param->interval);
+	parse_int_opt(tab, "resend", NULL, &param->resend);
+	parse_int_opt(tab, "nc", NULL, &param->nc);
+	parse_int_opt(tab, "loss_ctrl", "lossctrl", &param->loss_ctrl);
+	parse_int_opt(tab, "pacing", NULL, &param->pacing);
+	parse_int_opt(tab, "fec", NULL, &param->fec);
+	parse_int_opt(tab, "sock_buf", "sockbuf", &param->sock_buf);
+	parse_int_opt(tab, "keepalive", NULL, &param->keepalive);
+	parse_int_opt(tab, "conn_timeout", "conntimeout", &param->conn_timeout);
+
+	xkcp_apply_mode_param(param);
+}
+
+int xkcp_parse_param(const char *filename)
+{
+	if (!filename) return 1;
+
+	FILE *fp = fopen(filename, "r");
+	if (!fp) {
+		debug(LOG_ERR, "Open config file [%s] failed: %s", filename, strerror(errno));
 		return 1;
 	}
 
-	free(buf);
-	json_value_free(obj);
+	char errbuf[256] = {0};
+	toml_table_t *root = toml_parse_file(fp, errbuf, sizeof(errbuf));
+	fclose(fp);
 
+	if (!root) {
+		debug(LOG_ERR, "TOML parse [%s] error: %s", filename, errbuf);
+		return 1;
+	}
+
+	/* 1. Parse [global] section if present */
+	toml_table_t *global_tab = toml_table_in(root, "global");
+	if (global_tab) {
+		parse_int_opt(global_tab, "syslog", NULL, &config.syslog);
+		parse_int_opt(global_tab, "mon_port", "monport", &config.mon_port);
+		int dbglvl = -1;
+		parse_int_opt(global_tab, "debug", NULL, &dbglvl);
+		if (dbglvl >= 0) debugconf.debuglevel = dbglvl;
+	}
+
+	/* 2. Check for [[tunnel]] or [[client]] or [[server]] array of tables */
+	toml_array_t *tunnels_arr = toml_array_in(root, "tunnel");
+	if (!tunnels_arr) tunnels_arr = toml_array_in(root, "tunnels");
+	if (!tunnels_arr) tunnels_arr = toml_array_in(root, config.is_server ? "server" : "client");
+
+	if (tunnels_arr && toml_array_nelem(tunnels_arr) > 0) {
+		int n = toml_array_nelem(tunnels_arr);
+		config.num_tunnels = n;
+		config.tunnels = calloc(n, sizeof(struct xkcp_param));
+		if (!config.tunnels) {
+			debug(LOG_ERR, "Memory allocation failed for %d tunnels", n);
+			toml_free(root);
+			return 1;
+		}
+		for (int i = 0; i < n; i++) {
+			xkcp_param_init(&config.tunnels[i]);
+			toml_table_t *tt = toml_table_at(tunnels_arr, i);
+			parse_tunnel_table(tt, &config.tunnels[i]);
+			if (!config.tunnels[i].name) {
+				char auto_name[32];
+				snprintf(auto_name, sizeof(auto_name), "tunnel_%d", i + 1);
+				config.tunnels[i].name = strdup(auto_name);
+			}
+		}
+		/* For backwards compatibility, point single param to first tunnel */
+		config.param = config.tunnels[0];
+	} else {
+		/* 3. Fallback: Parse root table directly as single-tunnel configuration */
+		parse_tunnel_table(root, &config.param);
+		config.num_tunnels = 1;
+		config.tunnels = calloc(1, sizeof(struct xkcp_param));
+		if (config.tunnels) {
+			config.tunnels[0] = config.param;
+			if (!config.tunnels[0].name)
+				config.tunnels[0].name = strdup("default");
+		}
+	}
+
+	toml_free(root);
 	return 0;
+}
+
+void xkcp_free_config(void)
+{
+	if (config.config_file) {
+		free(config.config_file);
+		config.config_file = NULL;
+	}
+	if (config.tunnels && config.tunnels != &config.param) {
+		for (int i = 0; i < config.num_tunnels; i++) {
+			if (config.tunnels[i].name) free(config.tunnels[i].name);
+			if (config.tunnels[i].local_interface) free(config.tunnels[i].local_interface);
+			if (config.tunnels[i].remote_addr) free(config.tunnels[i].remote_addr);
+			if (config.tunnels[i].key) free(config.tunnels[i].key);
+			if (config.tunnels[i].crypt) free(config.tunnels[i].crypt);
+			if (config.tunnels[i].mode) free(config.tunnels[i].mode);
+		}
+		free(config.tunnels);
+		config.tunnels = NULL;
+	}
 }

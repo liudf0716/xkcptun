@@ -1,0 +1,28 @@
+# ========================================================
+# xkcptun Client Configuration (TOML Format)
+# ========================================================
+
+# 全局选项
+[global]
+syslog = true
+mon_port = 9086
+
+# 隧道配置列表
+[[tunnel]]
+name = "k_bwg"
+local_interface = "br-lan"
+local_port = 2222
+remote_addr = "172.96.252.145"
+remote_port = 9089
+mode = "fast3"
+mtu = 1350
+sndwnd = 2048
+rcvwnd = 2048
+fec = 1
+datashard = 10
+parityshard = 3
+pacing = 128
+lossctrl = 0
+sockbuf = 4194304
+keepalive = 10
+conntimeout = 60

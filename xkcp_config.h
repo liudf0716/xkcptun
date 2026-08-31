@@ -18,47 +18,56 @@
  *                                                                  *
 \********************************************************************/
 
-
 #ifndef	_XKCP_CONFIG_
 #define	_XKCP_CONFIG_
 
+#include <stddef.h>
+
 struct xkcp_param {
-	char	*local_interface; 	// localaddr
-	char	*remote_addr; 	// remoteaddr
-	char	*key;			// key
-	char	*crypt;			// crypt
-	char	*mode;			// mode
-	int		local_port;		// local tcp listen port
-	int		remote_port;	// remote udp connect port
-	int 	conn;			// conn
-	int 	auto_expire;	// autoexpire
-	int 	scavenge_ttl;	// scavengettl
-	int		mtu;			// mtu
-	int		sndwnd;			// sndwnd
-	int		rcvwnd;			// rcvwnd
-	int		data_shard;		// datashard
-	int		parity_shard;  	// parityshard
-	int		dscp;			// dscp
-	int 	nocomp; 		// nocomp
-	int		ack_nodelay;	// acknodelay
-	int 	nodelay;		// nodelay
-	int		interval;		// interval
-	int 	resend;			// resend
-	int 	nc; 			// no congestion
-	int		loss_ctrl;		// losscntl: loss-driven AIMD send window (1=on)
-	int		pacing;			// pacing: max KCP segments per flush tick (0=off)
-	int		fec;			// fec enable (1=frame all datagrams)
-	int 	sock_buf;		// sockbuf
-	int 	keepalive;		// keepalive
-	int 	conn_timeout;	// conn_timeout (seconds, 0=disabled)
+	char	*name;              // tunnel identifier / name (e.g. "k_bwg")
+	char	*local_interface; 	// local interface (e.g. "br-lan")
+	char	*remote_addr; 	    // remote host / IP
+	char	*key;			    // key (compat)
+	char	*crypt;			    // crypt (compat)
+	char	*mode;			    // mode preset (fast3/fast2/fast/normal)
+	int		local_port;		    // local port (TCP listen on client, UDP listen on server)
+	int		remote_port;	    // remote port (UDP connect on client, TCP target on server)
+	int 	conn;			    // conn (compat)
+	int 	auto_expire;	    // autoexpire (compat)
+	int 	scavenge_ttl;	    // scavengettl (compat)
+	int		mtu;			    // mtu
+	int		sndwnd;			    // sndwnd
+	int		rcvwnd;			    // rcvwnd
+	int		data_shard;		    // datashard (FEC)
+	int		parity_shard;  	    // parityshard (FEC)
+	int		dscp;			    // dscp TOS
+	int 	nocomp; 		    // nocomp (compat)
+	int		ack_nodelay;	    // acknodelay (compat)
+	int 	nodelay;		    // nodelay
+	int		interval;		    // interval
+	int 	resend;			    // resend
+	int 	nc; 			    // no congestion
+	int		loss_ctrl;		    // loss-driven AIMD send window (1=on)
+	int		pacing;			    // pacing: max KCP segments per flush tick (0=off)
+	int		fec;			    // fec enable (1=frame all datagrams)
+	int 	sock_buf;		    // sockbuf
+	int 	keepalive;		    // keepalive ping interval (seconds)
+	int 	conn_timeout;	    // conn_timeout (seconds, 0=disabled)
 };
 
 struct xkcp_config {
 	char 	*config_file;
 	int 	daemon;
 	int		is_server;
-	int		(*main_loop)();
+	int     syslog;
+	int     mon_port;           // unified monitor port for xkcp_spy
+	int		(*main_loop)(void);
 
+	/* Multi-tunnel list */
+	int     num_tunnels;
+	struct xkcp_param *tunnels;
+
+	/* Default param (for single-tunnel or command-line invocation) */
 	struct xkcp_param param;
 };
 
@@ -66,14 +75,16 @@ void config_init(void);
 
 struct xkcp_config *xkcp_get_config(void);
 
-int xkcp_param_validate(struct xkcp_param * param);
+struct xkcp_param *xkcp_get_param(void);
+
+void xkcp_param_init(struct xkcp_param *param);
 
 int xkcp_parse_param(const char *filename);
 
-int xkcp_parse_json_param(struct xkcp_param *config, const char *filename);
-
-struct xkcp_param *xkcp_get_param(void);
+void xkcp_apply_mode_param(struct xkcp_param *param);
 
 void xkcp_apply_mode(void);
+
+void xkcp_free_config(void);
 
 #endif

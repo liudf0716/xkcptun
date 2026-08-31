@@ -1,0 +1,24 @@
+# ========================================================
+# xkcptun Server Configuration (TOML Format)
+# ========================================================
+
+# 全局选项
+[global]
+syslog = true
+mon_port = 9087
+
+# 隧道配置列表
+[[tunnel]]
+name = "srv_ssh"
+local_interface = "eth0"
+local_port = 9089
+remote_addr = "127.0.0.1"
+remote_port = 22
+mode = "fast3"
+mtu = 1350
+sndwnd = 2048
+rcvwnd = 2048
+fec = 1
+datashard = 10
+parityshard = 3
+sockbuf = 4194304
