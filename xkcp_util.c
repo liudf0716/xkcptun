@@ -414,21 +414,31 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 	return puser;
 }
 
+#define XKCP_SND_QUE_HIGH	256	/* queued KCP segments */
+#define XKCP_SND_QUE_LOW	64
+
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 {
-	char obuf[OBUF_SIZE];
+	char buf[2048];
+	int len, nret;
 	struct evbuffer *input = bufferevent_get_input(bev);
-	int nrecv = 0;
-	while (1) {
-		if (ikcp_waitsnd(kcp) >= (int)(kcp->snd_wnd * 2)) {
+
+	if (kcp->nsnd_que > XKCP_SND_QUE_HIGH) {
+		bufferevent_disable(bev, EV_READ);
+		return;
+	}
+
+	while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) {
+		nret = ikcp_send(kcp, buf, len);
+		if (nret < 0)
+			debug(LOG_INFO, "ikcp_send conv [%u] failed [%d] len [%d]",
+				  kcp->conv, nret, len);
+		if (kcp->nsnd_que > XKCP_SND_QUE_HIGH) {
 			bufferevent_disable(bev, EV_READ);
 			break;
 		}
-		nrecv = evbuffer_remove(input, obuf, sizeof(obuf));
-		if (nrecv <= 0)
-			break;
-		ikcp_send(kcp, obuf, nrecv);
 	}
+	ikcp_flush(kcp);
 }
 
 void xkcp_forward_all_data(iqueue_head *task_list)
@@ -455,20 +465,47 @@ static void xkcp_bev_drain_event_cb(struct bufferevent *bev, short what, void *c
 	bufferevent_free(bev);
 }
 
+#define XKCP_TCP_OUTBUF_LIMIT	(256 * 1024)
+
 void xkcp_forward_data(struct xkcp_task *task)
 {
-	char buf[BUF_RECV_LEN];
-	int nrecv = 0;
-	ikcpcb *kcp = task->kcp;
+	char sbuf[OBUF_SIZE];
+	IUINT32 now = iclock();
+
+	task->last_active = now;
+
+	if (task->bev &&
+	    evbuffer_get_length(bufferevent_get_output(task->bev)) >
+	    XKCP_TCP_OUTBUF_LIMIT)
+		return;
 
 	while (1) {
-		nrecv = ikcp_recv(kcp, buf, sizeof(buf));
-		if (nrecv <= 0)
+		int peeksize = ikcp_peeksize(task->kcp);
+		if (peeksize < 0)
 			break;
 
+		char *obuf = sbuf;
+		char *heapbuf = NULL;
+		if (peeksize > (int)sizeof(sbuf)) {
+			heapbuf = malloc(peeksize);
+			if (!heapbuf) {
+				debug(LOG_ERR, "conv [%u] alloc %d bytes for recv failed",
+					  task->kcp->conv, peeksize);
+				break;
+			}
+			obuf = heapbuf;
+		}
+
+		int nrecv = ikcp_recv(task->kcp, obuf, peeksize);
+		if (nrecv < 0) {
+			free(heapbuf);
+			break;
+		}
+
 		if (nrecv == XKCP_CLOSE_SIGNAL_LEN &&
-			memcmp(buf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
+			memcmp(obuf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
 			debug(LOG_INFO, "conv [%u] received close signal, closing tcp connection", task->conv);
+			free(heapbuf);
 			if (task->bev) {
 				struct evbuffer *out = bufferevent_get_output(task->bev);
 				if (evbuffer_get_length(out) > 0) {
@@ -495,7 +532,7 @@ void xkcp_forward_data(struct xkcp_task *task)
 		if (task->user_owned && !task->handshake_done) {
 			char target_host[128] = {0};
 			uint16_t target_port = 0;
-			int hdr_len = xkcp_proto_decode_header(buf, nrecv, target_host, sizeof(target_host), &target_port);
+			int hdr_len = xkcp_proto_decode_header(obuf, nrecv, target_host, sizeof(target_host), &target_port);
 			int (*conn_fn)(struct xkcp_task *, const char *, uint16_t) =
 				task->tunnel ? task->tunnel->connect_target : NULL;
 
@@ -512,11 +549,12 @@ void xkcp_forward_data(struct xkcp_task *task)
 					void *puser = task->kcp->user;
 					ikcp_release(task->kcp);
 					if (puser) free(puser);
+					free(heapbuf);
 					free(task);
 					return;
 				}
 				if (nrecv > hdr_len && task->bev) {
-					bufferevent_write(task->bev, buf + hdr_len, nrecv - hdr_len);
+					evbuffer_add(bufferevent_get_output(task->bev), obuf + hdr_len, nrecv - hdr_len);
 				}
 			} else {
 				/* Fallback to static target */
@@ -536,19 +574,23 @@ void xkcp_forward_data(struct xkcp_task *task)
 					void *puser = task->kcp->user;
 					ikcp_release(task->kcp);
 					if (puser) free(puser);
+					free(heapbuf);
 					free(task);
 					return;
 				}
 				if (task->bev) {
-					bufferevent_write(task->bev, buf, nrecv);
+					evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
 				}
 			}
+			free(heapbuf);
 			task->last_active = iclock();
 			continue;
 		}
 
 		if (task->bev)
-			bufferevent_write(task->bev, buf, nrecv);
+			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
+
+		free(heapbuf);
 		task->last_active = iclock();
 	}
 }
@@ -556,11 +598,13 @@ void xkcp_forward_data(struct xkcp_task *task)
 void xkcp_update_task_list(iqueue_head *task_list)
 {
 	struct xkcp_task *task;
+	IUINT32 now = iclock();
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->kcp) {
-			ikcp_update(task->kcp, iclock());
+			ikcp_update(task->kcp, now);
 			xkcp_forward_data(task);
-			if (task->bev && ikcp_waitsnd(task->kcp) < (int)task->kcp->snd_wnd) {
+			if (task->bev && task->kcp->nsnd_que < XKCP_SND_QUE_LOW &&
+			    !(bufferevent_get_enabled(task->bev) & EV_READ)) {
 				bufferevent_enable(task->bev, EV_READ);
 			}
 		}
