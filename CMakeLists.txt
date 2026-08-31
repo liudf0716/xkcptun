@@ -134,6 +134,6 @@ target_link_libraries(xkcp_client ${link_flag} ${libs})
 add_executable(xkcp_server ${src_xkcp_server})
 target_link_libraries(xkcp_server ${link_flag} ${libs})
 
-install(TARGETS xkcp_client xkcp_server
+install(TARGETS xkcp_client xkcp_server xkcp_spy
         RUNTIME DESTINATION bin
 )
