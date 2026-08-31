@@ -109,10 +109,10 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	task->target_host[0] = '\0';
 	task->target_port = 0;
 
-	if (tunnel && (tunnel->param.dynamic_target || tunnel->param.target_port > 0)) {
+	if (tunnel && tunnel->param.dynamic_target && tunnel->param.target_port > 0) {
 		char hdr_buf[XKCP_MAX_HDR_LEN];
 		const char *thost = tunnel->param.target_addr ? tunnel->param.target_addr : "127.0.0.1";
-		uint16_t tport = tunnel->param.target_port ? (uint16_t)tunnel->param.target_port : 22;
+		uint16_t tport = (uint16_t)tunnel->param.target_port;
 		int hlen = xkcp_proto_encode_header(hdr_buf, sizeof(hdr_buf), thost, tport);
 		if (hlen > 0) {
 			ikcp_send(kcp_client, hdr_buf, hlen);

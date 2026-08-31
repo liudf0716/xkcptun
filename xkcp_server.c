@@ -197,16 +197,28 @@ static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, c
 	task->bev = NULL;
 	task->sockaddr = &param->sockaddr;
 	task->last_active = iclock();
-	task->user_owned = 1;
-	task->conv = conv;
-	task->tunnel = tunnel;
 	task->handshake_done = 0;
 	task->target_host[0] = '\0';
 	task->target_port = 0;
-	
+
+	if (tunnel->param.remote_port > 0) {
+		const char *host = tunnel->param.remote_addr && tunnel->param.remote_addr[0] ?
+		                   tunnel->param.remote_addr : "127.0.0.1";
+		uint16_t port = (uint16_t)tunnel->param.remote_port;
+		if (tunnel->connect_target) {
+			if (tunnel->connect_target(task, host, port) == 0) {
+				task->handshake_done = 1;
+				snprintf(task->target_host, sizeof(task->target_host), "%s", host);
+				task->target_port = port;
+			}
+		}
+	}
+
 	add_task_tail(task, task_list);
-	debug(LOG_INFO, "[%s] new session conv [%u] created (awaiting dynamic target / data)",
-	      tunnel->name, conv);
+	debug(LOG_INFO, "[%s] new session conv [%u] created (target: %s:%u)",
+	      tunnel->name, conv,
+	      task->handshake_done ? task->target_host : "dynamic",
+	      task->handshake_done ? task->target_port : 0);
 	return task;
 }
 
