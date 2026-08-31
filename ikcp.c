@@ -28,10 +28,6 @@ const IUINT32 IKCP_RTO_NDL = 30;		// no delay min rto
 const IUINT32 IKCP_RTO_MIN = 100;		// normal min rto
 const IUINT32 IKCP_RTO_DEF = 200;
 const IUINT32 IKCP_RTO_MAX = 60000;
-const IUINT32 IKCP_CMD_PUSH = 81;		// cmd: push data
-const IUINT32 IKCP_CMD_ACK  = 82;		// cmd: ack
-const IUINT32 IKCP_CMD_WASK = 83;		// cmd: window probe (ask)
-const IUINT32 IKCP_CMD_WINS = 84;		// cmd: window size (tell)
 const IUINT32 IKCP_ASK_SEND = 1;		// need to send IKCP_CMD_WASK
 const IUINT32 IKCP_ASK_TELL = 2;		// need to send IKCP_CMD_WINS
 const IUINT32 IKCP_WND_SND = 32;
@@ -72,7 +68,7 @@ static inline char *ikcp_encode16u(char *p, unsigned short w)
 	*(unsigned char*)(p + 0) = (w & 255);
 	*(unsigned char*)(p + 1) = (w >> 8);
 #else
-	*(unsigned short*)(p) = w;
+	memcpy(p, &w, sizeof(unsigned short));
 #endif
 	p += 2;
 	return p;
@@ -85,7 +81,7 @@ static inline const char *ikcp_decode16u(const char *p, unsigned short *w)
 	*w = *(const unsigned char*)(p + 1);
 	*w = *(const unsigned char*)(p + 0) + (*w << 8);
 #else
-	*w = *(const unsigned short*)p;
+	memcpy(w, p, sizeof(unsigned short));
 #endif
 	p += 2;
 	return p;
@@ -100,7 +96,7 @@ static inline char *ikcp_encode32u(char *p, IUINT32 l)
 	*(unsigned char*)(p + 2) = (unsigned char)((l >> 16) & 0xff);
 	*(unsigned char*)(p + 3) = (unsigned char)((l >> 24) & 0xff);
 #else
-	*(IUINT32*)p = l;
+	memcpy(p, &l, sizeof(IUINT32));
 #endif
 	p += 4;
 	return p;
@@ -115,7 +111,7 @@ const char *ikcp_decode32u(const char *p, IUINT32 *l)
 	*l = *(const unsigned char*)(p + 1) + (*l << 8);
 	*l = *(const unsigned char*)(p + 0) + (*l << 8);
 #else 
-	*l = *(const IUINT32*)p;
+	memcpy(l, p, sizeof(IUINT32));
 #endif
 	p += 4;
 	return p;

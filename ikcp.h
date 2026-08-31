@@ -250,6 +250,11 @@ typedef struct IQUEUEHEAD iqueue_head;
 
 
 
+#define IKCP_CMD_PUSH 81   /* cmd: push data */
+#define IKCP_CMD_ACK  82   /* cmd: ack */
+#define IKCP_CMD_WASK 83   /* cmd: window probe (ask) */
+#define IKCP_CMD_WINS 84   /* cmd: window size (tell) */
+
 //=====================================================================
 // SEGMENT
 //=====================================================================

@@ -95,17 +95,20 @@ void clean_useless_client(struct xkcp_tunnel *tunnel)
 	if (!tunnel || !tunnel->server_xkcp_hash)
 		return;
 	jwHashTable *table = tunnel->server_xkcp_hash;
-	for (int i = 0; i < table->buckets; i++) {
-		jwHashEntry *entry = table->bucket[i];
-		while (entry) {
-			jwHashEntry *next = entry->next;
-			iqueue_head *list = entry->value.ptrValue;
+	for (size_t b = 0; b < table->buckets; b++) {
+		jwHashEntry **pp = &table->bucket[b];
+		while (*pp) {
+			jwHashEntry *e = *pp;
+			iqueue_head *list = e->value.ptrValue;
 			if (list && iqueue_is_empty(list)) {
+				*pp = e->next;
 				free(list);
-				xkcp_server_drop_peer_fec(tunnel, entry->key.strValue);
-				del_by_str(table, entry->key.strValue);
+				xkcp_server_drop_peer_fec(tunnel, e->key.strValue);
+				free(e->key.strValue);
+				free(e);
+				continue;
 			}
-			entry = next;
+			pp = &e->next;
 		}
 	}
 }
@@ -165,10 +168,11 @@ static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	set_timer_interval_ms(&tunnel->timer_event, tunnel->param.interval);
 }
 
-static struct xkcp_task *create_new_tcp_connection(struct xkcp_tunnel *tunnel, const int xkcpfd,
+static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, const int xkcpfd,
 			struct event_base *base, struct sockaddr_in *from, int from_len,
 			IUINT32 conv, iqueue_head *task_list)
 {
+	(void)base;
 	struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
 	assert(param);
 	memset(param, 0, sizeof(struct xkcp_proxy_param));
@@ -190,61 +194,40 @@ static struct xkcp_task *create_new_tcp_connection(struct xkcp_tunnel *tunnel, c
 	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 	assert(task);
 	task->kcp = kcp_server;		
+	task->bev = NULL;
 	task->sockaddr = &param->sockaddr;
 	task->last_active = iclock();
 	task->user_owned = 1;
+	task->conv = conv;
 	task->tunnel = tunnel;
+	task->handshake_done = 0;
+	task->target_host[0] = '\0';
+	task->target_port = 0;
 	
-	struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-	if (!bev) {
-		debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
-		goto err;
-	}
-	
-	task->bev = bev;
-	bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
-	bufferevent_enable(bev, EV_READ);
-	{
-		struct sockaddr_in sin;
-		memset(&sin, 0, sizeof(sin));
-		sin.sin_family = AF_INET;
-		sin.sin_port = htons(tunnel->param.remote_port);
-		if (inet_aton(tunnel->param.remote_addr, &sin.sin_addr)) {
-			if (bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-				bufferevent_free(bev);
-				debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
-				goto err;
-			}
-		} else if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET,
-							       tunnel->param.remote_addr,
-							       tunnel->param.remote_port) < 0) {
-			bufferevent_free(bev);
-			debug(LOG_ERR, "bufferevent_socket_connect failed [%s]", strerror(errno));
-			goto err;
-		}
-	}
 	add_task_tail(task, task_list);
-	debug(LOG_INFO, "[%s] new session conv [%u] -> [%s]:[%d]",
-	      tunnel->name, conv, tunnel->param.remote_addr, tunnel->param.remote_port);
+	debug(LOG_INFO, "[%s] new session conv [%u] created (awaiting dynamic target / data)",
+	      tunnel->name, conv);
 	return task;
-err:
-	if (task->kcp) {
-		ikcp_release(task->kcp);
-	}
-	free(param);
-	free(task);
-	return NULL;
 }
 
 static void server_handle_packet(struct xkcp_tunnel *tunnel, const int xkcpfd,
 				 struct event_base *base, char *buf, int nrecv,
 				 struct sockaddr_in *from, int from_len)
 {
+	if (nrecv < 24) return;
 	IUINT32 conv = ikcp_getconv(buf);
 	if (conv == 0) return;
 
+	uint8_t cmd = (uint8_t)buf[4];
+	IUINT32 sn = 0;
+	ikcp_decode32u(buf + 12, &sn);
+
 	struct xkcp_task *task = xkcp_find_task(conv, from, tunnel);
 	if (!task) {
+		/* Only create new session for initial data push packet */
+		if (cmd != IKCP_CMD_PUSH || sn != 0)
+			return;
+
 		char ipstr[32];
 		snprintf(ipstr, sizeof(ipstr), "%u:%u",
 			 ntohl(from->sin_addr.s_addr), ntohs(from->sin_port));
@@ -256,7 +239,7 @@ static void server_handle_packet(struct xkcp_tunnel *tunnel, const int xkcpfd,
 			iqueue_init(task_list);
 			add_ptr_by_str(tunnel->server_xkcp_hash, ipstr, task_list);
 		}
-		task = create_new_tcp_connection(tunnel, xkcpfd, base, from, from_len, conv, task_list);
+		task = create_new_server_session(tunnel, xkcpfd, base, from, from_len, conv, task_list);
 		if (!task) return;
 	}
 
@@ -415,6 +398,7 @@ int server_main_loop(void)
 		tunnel->mgr = &mgr;
 		tunnel->server_xkcp_hash = create_hash(1024);
 		tunnel->server_fec_hash = create_hash(1024);
+		tunnel->connect_target = xkcp_server_connect_target;
 
 		tunnel->xkcp_fd = set_xkcp_listener(tunnel);
 		if (tunnel->xkcp_fd < 0) {
@@ -474,8 +458,8 @@ int server_main_loop(void)
 			evbuffer_free(t->udp_pend);
 		if (t->xkcp_fd >= 0)
 			close(t->xkcp_fd);
-		delete_hash(t->server_fec_hash, (void *)fec_conn_free, HASHPTR, HASHSTRING);
-		delete_hash(t->server_xkcp_hash, (void *)task_list_free, HASHPTR, HASHSTRING);
+		delete_hash(t->server_fec_hash, (void *)fec_conn_free, HASHSTRING, HASHPTR);
+		delete_hash(t->server_xkcp_hash, (void *)task_list_free, HASHSTRING, HASHPTR);
 		iqueue_del(&t->node);
 		free(t);
 	}

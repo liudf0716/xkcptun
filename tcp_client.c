@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
+#include <arpa/inet.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -59,4 +60,46 @@ void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
 	ikcpcb *kcp = task->kcp;
 	xkcp_tcp_read_cb(bev, kcp);
 	xkcp_forward_data(task);
+}
+
+int xkcp_server_connect_target(struct xkcp_task *task, const char *host, uint16_t port)
+{
+	if (!task || !host || port == 0)
+		return -1;
+
+	struct xkcp_tunnel *tunnel = task->tunnel;
+	struct event_base *base = tunnel ? tunnel->base : NULL;
+	if (!base) return -1;
+
+	struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+	if (!bev) {
+		debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
+		return -1;
+	}
+
+	task->bev = bev;
+	bufferevent_setcb(bev, tcp_client_read_cb, NULL, tcp_client_event_cb, task);
+	bufferevent_enable(bev, EV_READ | EV_WRITE);
+
+	struct sockaddr_in sin;
+	memset(&sin, 0, sizeof(sin));
+	sin.sin_family = AF_INET;
+	sin.sin_port = htons(port);
+	if (inet_aton(host, &sin.sin_addr)) {
+		if (bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+			bufferevent_free(bev);
+			task->bev = NULL;
+			debug(LOG_ERR, "bufferevent_socket_connect failed to %s:%u [%s]", host, port, strerror(errno));
+			return -1;
+		}
+	} else if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, host, port) < 0) {
+		bufferevent_free(bev);
+		task->bev = NULL;
+		debug(LOG_ERR, "bufferevent_socket_connect_hostname failed to %s:%u [%s]", host, port, strerror(errno));
+		return -1;
+	}
+
+	debug(LOG_INFO, "[%s] conv [%u] connected to target [%s]:[%u]",
+	      tunnel ? tunnel->name : "server", task->conv, host, port);
+	return 0;
 }

@@ -66,6 +66,9 @@ struct xkcp_task {
 	int					user_owned;
 	IUINT32				conv;		/* cached kcp conv, valid after free */
 	struct xkcp_tunnel	*tunnel;	/* back-pointer to owning tunnel */
+	int					handshake_done;	/* server: 1 = destination connected */
+	char				target_host[128];
+	uint16_t			target_port;
 };
 
 typedef struct xkcp_task xkcp_task_type;
@@ -89,6 +92,7 @@ struct xkcp_tunnel {
 	/* Server specific */
 	jwHashTable			*server_xkcp_hash;
 	jwHashTable			*server_fec_hash;
+	int					(*connect_target)(struct xkcp_task *task, const char *host, uint16_t port);
 
 	/* Egress UDP backpressure queue */
 	struct evbuffer		*udp_pend;

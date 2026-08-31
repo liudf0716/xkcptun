@@ -33,6 +33,7 @@
 #include <event2/util.h>
 
 #include "xkcp_util.h"
+#include "xkcp_proto.h"
 #include "tcp_proxy.h"
 #include "xkcp_client.h"
 #include "debug.h"
@@ -102,7 +103,24 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	task->sockaddr = &p->sockaddr;
 	task->last_active = iclock();
 	task->user_owned = 0;
+	task->conv = conv;
 	task->tunnel = tunnel;
+	task->handshake_done = 1;
+	task->target_host[0] = '\0';
+	task->target_port = 0;
+
+	if (tunnel && (tunnel->param.dynamic_target || tunnel->param.target_port > 0)) {
+		char hdr_buf[XKCP_MAX_HDR_LEN];
+		const char *thost = tunnel->param.target_addr ? tunnel->param.target_addr : "127.0.0.1";
+		uint16_t tport = tunnel->param.target_port ? (uint16_t)tunnel->param.target_port : 22;
+		int hlen = xkcp_proto_encode_header(hdr_buf, sizeof(hdr_buf), thost, tport);
+		if (hlen > 0) {
+			ikcp_send(kcp_client, hdr_buf, hlen);
+			debug(LOG_INFO, "[%s] conv [%u] sent dynamic target header [%s]:[%u]",
+			      tunnel->name, conv, thost, tport);
+		}
+	}
+
 	add_task_tail(task, tunnel ? &tunnel->client_task_list : NULL);
 
 	bufferevent_setcb(b_in, tcp_proxy_read_cb, NULL, tcp_proxy_event_cb, task);

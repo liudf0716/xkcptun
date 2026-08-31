@@ -79,10 +79,18 @@ static void get_client_list(struct bufferevent *bev, void *ctx, const char *arg)
 	struct xkcp_tunnel *t;
 	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
 		int conns = get_task_list_size(&t->client_task_list);
-		evbuffer_add_printf(output, "  - [%s] :%d -> %s:%d (mode: %s, fec: %d, conns: %d)\n",
-				    t->name, t->param.local_port, t->param.remote_addr,
-				    t->param.remote_port, t->param.mode ? t->param.mode : "fast3",
-				    t->param.fec, conns);
+		if (t->param.dynamic_target && t->param.target_port > 0) {
+			evbuffer_add_printf(output, "  - [%s] :%d -> %s:%d -> Target %s:%d (mode: %s, fec: %d, conns: %d)\n",
+					    t->name, t->param.local_port, t->param.remote_addr,
+					    t->param.remote_port, t->param.target_addr ? t->param.target_addr : "127.0.0.1",
+					    t->param.target_port, t->param.mode ? t->param.mode : "fast3",
+					    t->param.fec, conns);
+		} else {
+			evbuffer_add_printf(output, "  - [%s] :%d -> %s:%d (mode: %s, fec: %d, conns: %d)\n",
+					    t->name, t->param.local_port, t->param.remote_addr,
+					    t->param.remote_port, t->param.mode ? t->param.mode : "fast3",
+					    t->param.fec, conns);
+		}
 	}
 }
 

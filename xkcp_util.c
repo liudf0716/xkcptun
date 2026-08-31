@@ -46,6 +46,7 @@
 
 #include "ikcp.h"
 #include "fec.h"
+#include "xkcp_proto.h"
 #include "xkcp_util.h"
 #include "xkcp_config.h"
 #include "commandline.h"
@@ -434,12 +435,27 @@ void xkcp_forward_all_data(iqueue_head *task_list)
 	}
 }
 
+static void xkcp_bev_drain_cb(struct bufferevent *bev, void *ctx)
+{
+	(void)ctx;
+	struct evbuffer *output = bufferevent_get_output(bev);
+	if (evbuffer_get_length(output) == 0) {
+		bufferevent_free(bev);
+	}
+}
+
+static void xkcp_bev_drain_event_cb(struct bufferevent *bev, short what, void *ctx)
+{
+	(void)what;
+	(void)ctx;
+	bufferevent_free(bev);
+}
+
 void xkcp_forward_data(struct xkcp_task *task)
 {
 	char buf[BUF_RECV_LEN];
 	int nrecv = 0;
 	ikcpcb *kcp = task->kcp;
-	struct bufferevent *bev = task->bev;
 
 	while (1) {
 		nrecv = ikcp_recv(kcp, buf, sizeof(buf));
@@ -449,7 +465,16 @@ void xkcp_forward_data(struct xkcp_task *task)
 		if (nrecv == XKCP_CLOSE_SIGNAL_LEN &&
 			memcmp(buf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
 			debug(LOG_INFO, "conv [%u] received close signal, closing tcp connection", task->conv);
-			bufferevent_free(bev);
+			if (task->bev) {
+				struct evbuffer *out = bufferevent_get_output(task->bev);
+				if (evbuffer_get_length(out) > 0) {
+					bufferevent_disable(task->bev, EV_READ);
+					bufferevent_setcb(task->bev, NULL, xkcp_bev_drain_cb, xkcp_bev_drain_event_cb, NULL);
+				} else {
+					bufferevent_free(task->bev);
+				}
+				task->bev = NULL;
+			}
 			del_task(task);
 			if (task->user_owned && task->kcp) {
 				void *puser = task->kcp->user;
@@ -462,7 +487,64 @@ void xkcp_forward_data(struct xkcp_task *task)
 			return;
 		}
 
-		bufferevent_write(bev, buf, nrecv);
+		/* Server side: perform dynamic destination handshake if not done yet */
+		if (task->user_owned && !task->handshake_done) {
+			char target_host[128] = {0};
+			uint16_t target_port = 0;
+			int hdr_len = xkcp_proto_decode_header(buf, nrecv, target_host, sizeof(target_host), &target_port);
+			int (*conn_fn)(struct xkcp_task *, const char *, uint16_t) =
+				task->tunnel ? task->tunnel->connect_target : NULL;
+
+			if (hdr_len > 0) {
+				task->handshake_done = 1;
+				snprintf(task->target_host, sizeof(task->target_host), "%s", target_host);
+				task->target_port = target_port;
+				if (!conn_fn || conn_fn(task, target_host, target_port) < 0) {
+					debug(LOG_ERR, "[%s] conv [%u] connect to dynamic target [%s]:[%u] failed",
+					      task->tunnel ? task->tunnel->name : "server", task->conv, target_host, target_port);
+					ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
+					ikcp_flush(task->kcp);
+					del_task(task);
+					void *puser = task->kcp->user;
+					ikcp_release(task->kcp);
+					if (puser) free(puser);
+					free(task);
+					return;
+				}
+				if (nrecv > hdr_len && task->bev) {
+					bufferevent_write(task->bev, buf + hdr_len, nrecv - hdr_len);
+				}
+			} else {
+				/* Fallback to static target */
+				task->handshake_done = 1;
+				const char *fb_host = task->tunnel && task->tunnel->param.remote_addr && task->tunnel->param.remote_addr[0] ?
+				                      task->tunnel->param.remote_addr : "127.0.0.1";
+				uint16_t fb_port = task->tunnel && task->tunnel->param.remote_port ?
+				                   (uint16_t)task->tunnel->param.remote_port : 22;
+				snprintf(task->target_host, sizeof(task->target_host), "%s", fb_host);
+				task->target_port = fb_port;
+				if (!conn_fn || conn_fn(task, fb_host, fb_port) < 0) {
+					debug(LOG_ERR, "[%s] conv [%u] connect to fallback target [%s]:[%u] failed",
+					      task->tunnel ? task->tunnel->name : "server", task->conv, fb_host, fb_port);
+					ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
+					ikcp_flush(task->kcp);
+					del_task(task);
+					void *puser = task->kcp->user;
+					ikcp_release(task->kcp);
+					if (puser) free(puser);
+					free(task);
+					return;
+				}
+				if (task->bev) {
+					bufferevent_write(task->bev, buf, nrecv);
+				}
+			}
+			task->last_active = iclock();
+			continue;
+		}
+
+		if (task->bev)
+			bufferevent_write(task->bev, buf, nrecv);
 		task->last_active = iclock();
 	}
 }
@@ -536,7 +618,12 @@ void dump_task_list(iqueue_head *task_list, struct bufferevent *bev)
 	int count = 0;
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		count++;
-		evbuffer_add_printf(output, "\t[%d] conv [%u] \n", count, task->conv);
+		if (task->target_port > 0) {
+			evbuffer_add_printf(output, "\t[%d] conv [%u] -> [%s]:[%u]\n",
+					    count, task->conv, task->target_host, task->target_port);
+		} else {
+			evbuffer_add_printf(output, "\t[%d] conv [%u]\n", count, task->conv);
+		}
 	}
 	if (count == 0)
 		evbuffer_add_printf(output, "\tno active connections\n");
