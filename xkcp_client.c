@@ -18,7 +18,6 @@
  *                                                                  *
 \********************************************************************/
 
-
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -26,22 +25,20 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <netdb.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-
-
-#include <pthread.h>
+#include <syslog.h>
+#include <signal.h>
 
 #include <event2/event.h>
 #include <event2/event_struct.h>
-#include <event2/bufferevent_ssl.h>
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
 #include <event2/listener.h>
 #include <event2/util.h>
-#include <syslog.h>
 
 #include "ikcp.h"
 #include "fec.h"
@@ -53,26 +50,19 @@
 #include "xkcp_mon.h"
 #include "debug.h"
 
-#include <signal.h>
-
 extern struct event_base *g_exit_base;
 
-IQUEUE_HEAD(xkcp_task_list);
-
-static short mport = 9086;
-static struct fec_conn *g_fec = NULL;
-static struct xkcp_proxy_param *g_client_pp = NULL;
-
 /* deliver one raw KCP packet (post-FEC-decode) to the session layer */
-static void client_handle_packet(char *buf, int nrecv)
+static void client_handle_packet(struct xkcp_tunnel *tunnel, char *buf, int nrecv)
 {
 	IUINT32 conv = ikcp_getconv(buf);
-	struct xkcp_task *task = xkcp_find_task(conv, NULL);
+	struct xkcp_task *task = xkcp_find_task(conv, NULL, tunnel);
 	if (!task || !task->kcp)
 		return;
 
 	if (ikcp_input(task->kcp, buf, nrecv) < 0)
-		debug(LOG_INFO, "conv [%u] ikcp_input failed", conv);
+		debug(LOG_INFO, "[%s] conv [%u] ikcp_input failed",
+		      tunnel ? tunnel->name : "default", conv);
 
 	ikcp_flush(task->kcp);
 	xkcp_forward_data(task);
@@ -80,26 +70,35 @@ static void client_handle_packet(char *buf, int nrecv)
 
 static void fec_deliver_pkt(void *user, const char *pkt, int len)
 {
-	(void)user;
-	client_handle_packet((char *)pkt, len);
+	struct xkcp_tunnel *tunnel = user;
+	client_handle_packet(tunnel, (char *)pkt, len);
 }
 
-void
-timer_event_cb(evutil_socket_t fd, short event, void *arg)
+static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 {
-	xkcp_timer_event_cb(arg, &xkcp_task_list);
-	xkcp_fec_tick(g_client_pp);
+	struct xkcp_tunnel *tunnel = arg;
+	if (!tunnel) return;
+
+	(void)fd;
+	(void)event;
+
+	xkcp_update_task_list(&tunnel->client_task_list);
+	xkcp_task_check_timeout_val(&tunnel->client_task_list, tunnel->param.conn_timeout);
+	set_timer_interval_ms(&tunnel->timer_event, tunnel->param.interval);
+
+	if (tunnel->client_fec) {
+		xkcp_fec_tick(&tunnel->client_proxy_param);
+	}
 }
 
-void
-xkcp_rcv_cb(const int sock, short int which, void *arg)
+static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 {
+	struct xkcp_tunnel *tunnel = arg;
 	char buf[XKCP_RECV_BUF_LEN];
 	struct sockaddr_in from;
 	socklen_t from_len;
 	int nrecv;
 
-	(void)arg;
 	(void)which;
 
 	while (1) {
@@ -109,21 +108,22 @@ xkcp_rcv_cb(const int sock, short int which, void *arg)
 		if (nrecv <= 0)
 			break;
 
-		if (g_fec)
-			fec_conn_decode(g_fec, buf, nrecv, fec_deliver_pkt, NULL);
+		if (tunnel && tunnel->client_fec)
+			fec_conn_decode(tunnel->client_fec, buf, nrecv, fec_deliver_pkt, tunnel);
 		else
-			client_handle_packet(buf, nrecv);
+			client_handle_packet(tunnel, buf, nrecv);
 	}
 }
 
-static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, void *ptr)
+static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, struct xkcp_tunnel *tunnel)
 {
-	short lport = xkcp_get_param()->local_port;
+	short lport = tunnel->param.local_port;
 	struct sockaddr_in sin;
-	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
+	char *addr = get_iface_ip(tunnel->param.local_interface);
 	if (!addr) {
-		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
-		exit(EXIT_FAILURE);
+		debug(LOG_ERR, "[%s] get_iface_ip [%s] failed",
+		      tunnel->name, tunnel->param.local_interface);
+		return NULL;
 	}
 
 	memset(&sin, 0, sizeof(sin));
@@ -131,25 +131,30 @@ static struct evconnlistener *set_tcp_proxy_listener(struct event_base *base, vo
 	sin.sin_addr.s_addr = inet_addr(addr);
 	sin.sin_port = htons(lport);
 
-	struct evconnlistener * listener = evconnlistener_new_bind(base, tcp_proxy_accept_cb, ptr,
+	struct evconnlistener *listener = evconnlistener_new_bind(
+		base, tcp_proxy_accept_cb, &tunnel->client_proxy_param,
 		LEV_OPT_CLOSE_ON_FREE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_REUSEABLE,
 		-1, (struct sockaddr*)&sin, sizeof(sin));
 	if (!listener) {
-		debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
+		debug(LOG_ERR, "[%s] Couldn't create TCP listener on %s:%d: [%s]",
+		      tunnel->name, addr, lport, strerror(errno));
 		free(addr);
-		exit(EXIT_FAILURE);
+		return NULL;
 	}
 
+	debug(LOG_INFO, "[%s] TCP Proxy listening on %s:%d -> Remote %s:%d",
+	      tunnel->name, addr, lport, tunnel->param.remote_addr, tunnel->param.remote_port);
 	free(addr);
 	return listener;
 }
 
-static void client_task_list_free(void)
+static void client_task_list_free(struct xkcp_tunnel *tunnel)
 {
 	struct xkcp_task *task;
 	iqueue_head *p, *n;
 
-	for (p = xkcp_task_list.next, n = p->next; p != &xkcp_task_list; p = n, n = p->next) {
+	for (p = tunnel->client_task_list.next, n = p->next;
+	     p != &tunnel->client_task_list; p = n, n = p->next) {
 		task = iqueue_entry(p, struct xkcp_task, head);
 		if (task->kcp) {
 			ikcp_flush(task->kcp);
@@ -167,10 +172,9 @@ static void client_task_list_free(void)
 
 int client_main_loop(void)
 {
-	struct event timer_event, *xkcp_event = NULL;
-	struct hostent *server = NULL;
 	struct event_base *base = NULL;
-	struct evconnlistener *listener = NULL, *mlistener = NULL;
+	struct xkcp_manager mgr;
+	struct xkcp_config *cfg = xkcp_get_config();
 
 	base = event_base_new();
 	if (!base) {
@@ -181,74 +185,139 @@ int client_main_loop(void)
 	g_exit_base = base;
 	xkcp_set_event_base(base);
 
-	int xkcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (xkcp_fd < 0) {
-		debug(LOG_ERR, "create udp socket failed");
-		exit(EXIT_FAILURE);
+	memset(&mgr, 0, sizeof(mgr));
+	mgr.base = base;
+	mgr.is_server = 0;
+	iqueue_init(&mgr.tunnel_list);
+
+	int num_tunnels = cfg->num_tunnels > 0 ? cfg->num_tunnels : 1;
+	struct xkcp_param *params = cfg->num_tunnels > 0 ? cfg->tunnels : &cfg->param;
+
+	for (int i = 0; i < num_tunnels; i++) {
+		struct xkcp_param *p = &params[i];
+		struct xkcp_tunnel *tunnel = calloc(1, sizeof(struct xkcp_tunnel));
+		if (!tunnel) {
+			debug(LOG_ERR, "Failed to allocate memory for tunnel");
+			continue;
+		}
+
+		snprintf(tunnel->name, sizeof(tunnel->name), "%s", p->name ? p->name : "default");
+		tunnel->param = *p;
+		tunnel->base = base;
+		tunnel->mgr = &mgr;
+		iqueue_init(&tunnel->client_task_list);
+
+		/* Resolve remote server address */
+		struct hostent *server = gethostbyname(p->remote_addr);
+		if (!server) {
+			debug(LOG_ERR, "[%s] gethostbyname [%s] failed", tunnel->name, p->remote_addr);
+			free(tunnel);
+			continue;
+		}
+
+		int xkcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+		if (xkcp_fd < 0) {
+			debug(LOG_ERR, "[%s] create udp socket failed: %s", tunnel->name, strerror(errno));
+			free(tunnel);
+			continue;
+		}
+
+		evutil_make_socket_nonblocking(xkcp_fd);
+		xkcp_apply_sockbuf_param(xkcp_fd, p);
+		tunnel->xkcp_fd = xkcp_fd;
+
+		if (p->fec) {
+			int cap = p->mtu > 0 ? p->mtu : 1350;
+			tunnel->client_fec = fec_conn_new(p->data_shard, p->parity_shard, cap);
+			if (!tunnel->client_fec)
+				debug(LOG_ERR, "[%s] fec_conn_new failed, running without FEC", tunnel->name);
+		}
+
+		tunnel->client_proxy_param.base = base;
+		tunnel->client_proxy_param.xkcpfd = xkcp_fd;
+		tunnel->client_proxy_param.sockaddr.sin_family = AF_INET;
+		tunnel->client_proxy_param.sockaddr.sin_port = htons(p->remote_port);
+		memcpy((char *)&tunnel->client_proxy_param.sockaddr.sin_addr.s_addr,
+		       (char *)server->h_addr, server->h_length);
+		tunnel->client_proxy_param.addr_len = sizeof(tunnel->client_proxy_param.sockaddr);
+		tunnel->client_proxy_param.fec = tunnel->client_fec;
+		tunnel->client_proxy_param.tunnel = tunnel;
+
+		tunnel->listener = set_tcp_proxy_listener(base, tunnel);
+		if (!tunnel->listener) {
+			close(xkcp_fd);
+			if (tunnel->client_fec) fec_conn_free(tunnel->client_fec);
+			free(tunnel);
+			continue;
+		}
+
+		event_assign(&tunnel->timer_event, base, -1, EV_PERSIST, timer_event_cb, tunnel);
+		set_timer_interval_ms(&tunnel->timer_event, p->interval);
+
+		tunnel->xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, tunnel);
+		if (tunnel->xkcp_event)
+			event_add(tunnel->xkcp_event, NULL);
+
+		iqueue_add_tail(&tunnel->node, &mgr.tunnel_list);
+		mgr.num_tunnels++;
 	}
 
-	evutil_make_socket_nonblocking(xkcp_fd);
-	xkcp_apply_sockbuf(xkcp_fd);
-
-	server = gethostbyname(xkcp_get_param()->remote_addr);
-	if (!server) {
-		debug(LOG_ERR, "gethostbyname [%s] failed", xkcp_get_param()->remote_addr);
-		exit(EXIT_FAILURE);
+	if (mgr.num_tunnels == 0) {
+		debug(LOG_ERR, "No active tunnels could be initialized. Exiting.");
+		event_base_free(base);
+		return 1;
 	}
 
-	if (xkcp_get_param()->fec) {
-		int cap = xkcp_get_param()->mtu > 0 ? xkcp_get_param()->mtu : 1350;
-		g_fec = fec_conn_new(xkcp_get_param()->data_shard,
-				     xkcp_get_param()->parity_shard,
-				     cap);
-		if (!g_fec)
-			debug(LOG_ERR, "fec_conn_new failed, running without FEC");
-	}
-
-	struct xkcp_proxy_param  proxy_param;
-	memset(&proxy_param, 0, sizeof(proxy_param));
-	proxy_param.base 		= base;
-	proxy_param.xkcpfd 		= xkcp_fd;
-	proxy_param.sockaddr.sin_family 	= AF_INET;
-	proxy_param.sockaddr.sin_port		= htons(xkcp_get_param()->remote_port);
-	memcpy((char *)&proxy_param.sockaddr.sin_addr.s_addr, (char *)server->h_addr, server->h_length);
-	proxy_param.fec = g_fec;
-	g_client_pp = &proxy_param;
-	listener = set_tcp_proxy_listener(base, &proxy_param);
-
-	mlistener = set_xkcp_mon_listener(base, mport, &xkcp_task_list);
-
-	event_assign(&timer_event, base, -1, EV_PERSIST, timer_event_cb, &timer_event);
-	set_timer_interval(&timer_event);
+	short mport = cfg->mon_port > 0 ? (short)cfg->mon_port : 9086;
+	mgr.mon_listener = set_xkcp_mon_listener(base, mport, &mgr);
 
 	xkcp_setup_signals(base);
 
-	xkcp_event = event_new(base, xkcp_fd, EV_READ|EV_PERSIST, xkcp_rcv_cb, &proxy_param);
-	event_add(xkcp_event, NULL);
+	debug(LOG_INFO, "xkcptun client started with %d active tunnel(s), mon_port %d",
+	      mgr.num_tunnels, mport);
 
 	event_base_dispatch(base);
 
-	event_del(&timer_event);
-	if (xkcp_event) {
-		event_del(xkcp_event);
-		event_free(xkcp_event);
-		xkcp_event = NULL;
-	}
+	/* Cleanup on exit */
 	xkcp_cleanup_signals();
 	xkcp_cleanup_udp_queue();
-	evconnlistener_free(mlistener);
-	evconnlistener_free(listener);
-	close(xkcp_fd);
-	client_task_list_free();
-	event_base_free(base);
-	fec_conn_free(g_fec);
+	if (mgr.mon_listener)
+		evconnlistener_free(mgr.mon_listener);
 
+	iqueue_head *p, *n;
+	for (p = mgr.tunnel_list.next, n = p->next; p != &mgr.tunnel_list; p = n, n = p->next) {
+		struct xkcp_tunnel *t = iqueue_entry(p, struct xkcp_tunnel, node);
+		event_del(&t->timer_event);
+		if (t->xkcp_event) {
+			event_del(t->xkcp_event);
+			event_free(t->xkcp_event);
+		}
+		if (t->udp_wev) {
+			event_del(t->udp_wev);
+			event_free(t->udp_wev);
+		}
+		if (t->udp_pend)
+			evbuffer_free(t->udp_pend);
+		if (t->listener)
+			evconnlistener_free(t->listener);
+		if (t->xkcp_fd >= 0)
+			close(t->xkcp_fd);
+		client_task_list_free(t);
+		if (t->client_fec)
+			fec_conn_free(t->client_fec);
+		iqueue_del(&t->node);
+		free(t);
+	}
+
+	event_base_free(base);
+	debug(LOG_INFO, "xkcptun client stopped cleanly");
 	return 0;
 }
 
 int main(int argc, char **argv)
 {
 	struct xkcp_config *config = xkcp_get_config();
+	config->is_server = 0;
 	config->main_loop = client_main_loop;
 
 	return xkcp_main(argc, argv);

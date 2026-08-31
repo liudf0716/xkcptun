@@ -1,20 +1,29 @@
+/********************************************************************\
+ * This program is free software; you can redistribute it and/or    *
+ * modify it under the terms of the GNU General Public License as   *
+ * published by the Free Software Foundation; either version 2 of   *
+ * the License, or (at your option) any later version.              *
+ *                                                                  *
+ * This program is distributed in the hope that it will be useful,  *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of   *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    *
+ * GNU General Public License for more details.                     *
+ *                                                                  *
+ * You should have received a copy of the GNU General Public License*
+ * along with this program; if not, contact:                        *
+ *                                                                  *
+ * Free Software Foundation           Voice:  +1-617-542-5942       *
+ * 59 Temple Place - Suite 330        Fax:    +1-617-542-2652       *
+ * Boston, MA  02111-1307,  USA       gnu@gnu.org                   *
+ *                                                                  *
+\********************************************************************/
+
 #ifndef	_XKCP_CLIENT_
 #define	_XKCP_CLIENT_
 
 #include <event2/util.h>
 #include "ikcp.h"
-
-struct xkcp_task;
-
-
-#define	XKCP_RECV_BUF_LEN	4096
-#define	XKCP_SEND_BUF_LEN	10*15000
-
-void xkcp_rcv_cb(const int sock, short int which, void *arg);
-
-void timer_event_cb(evutil_socket_t fd, short event, void *arg);
-
-int xkcp_main(int argc, char **argv);
+#include "xkcp_util.h"
 
 int client_main_loop(void);
 

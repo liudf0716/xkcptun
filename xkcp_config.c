@@ -18,18 +18,16 @@
  *                                                                  *
 \********************************************************************/
 
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stddef.h>
+#include <string.h>
+#include <errno.h>
 #include <strings.h>
 #include <syslog.h>
 
-#include <errno.h>
-
+#include "xkcp_config.h"
 #include "toml.h"
 #include "debug.h"
-#include "xkcp_config.h"
 
 static struct xkcp_config config;
 
@@ -47,41 +45,59 @@ void xkcp_param_init(struct xkcp_param *param)
 {
 	memset(param, 0, sizeof(struct xkcp_param));
 	param->name = NULL;
-	param->local_interface = NULL;
-	param->remote_addr = NULL;
-	param->key = NULL;
-	param->crypt = NULL;
-	param->mode = NULL;
-
+	param->local_interface = strdup("");
+	param->local_port = 0;
+	param->remote_addr = strdup("");
+	param->key = strdup("it's a secrect");
+	param->crypt = strdup("none");
+	param->mode = strdup("fast3");
+	param->conn = 1;
+	param->auto_expire = 0;
+	param->scavenge_ttl = 120;
 	param->mtu = 1350;
-	param->sndwnd = 512;
-	param->rcvwnd = 512;
+	param->sndwnd = 1024;
+	param->rcvwnd = 1024;
 	param->data_shard = 10;
 	param->parity_shard = 3;
 	param->dscp = 0;
-	param->nocomp = 1;
+	param->nocomp = 0;
 	param->ack_nodelay = 0;
-	param->nodelay = 1;
+	param->nodelay = 0;
 	param->interval = 20;
 	param->resend = 2;
-	param->nc = 0;
-	param->loss_ctrl = 1;
-	param->pacing = 0;
+	param->nc = 1;
+	param->loss_ctrl = 0;
+	param->pacing = 128;
 	param->fec = 0;
 	param->sock_buf = 4194304;
 	param->keepalive = 10;
 	param->conn_timeout = 60;
 }
 
+void xkcp_param_free(struct xkcp_param *param)
+{
+	if (!param) return;
+	if (param->name) { free(param->name); param->name = NULL; }
+	if (param->local_interface) { free(param->local_interface); param->local_interface = NULL; }
+	if (param->remote_addr) { free(param->remote_addr); param->remote_addr = NULL; }
+	if (param->key) { free(param->key); param->key = NULL; }
+	if (param->crypt) { free(param->crypt); param->crypt = NULL; }
+	if (param->mode) { free(param->mode); param->mode = NULL; }
+}
+
 void config_init(void)
 {
+	int (*saved_loop)(void) = config.main_loop;
+	int saved_server = config.is_server;
+	xkcp_free_config();
 	memset(&config, 0, sizeof(struct xkcp_config));
 	config.daemon = 1;
-	config.is_server = 0;
+	config.is_server = saved_server;
 	config.syslog = 0;
 	config.mon_port = 0;
 	config.num_tunnels = 0;
 	config.tunnels = NULL;
+	config.main_loop = saved_loop;
 
 	xkcp_param_init(&config.param);
 }
@@ -235,18 +251,16 @@ int xkcp_parse_param(const char *filename)
 				config.tunnels[i].name = strdup(auto_name);
 			}
 		}
-		/* For backwards compatibility, point single param to first tunnel */
+		/* Free default config.param strings before copy */
+		xkcp_param_free(&config.param);
 		config.param = config.tunnels[0];
 	} else {
 		/* 3. Fallback: Parse root table directly as single-tunnel configuration */
 		parse_tunnel_table(root, &config.param);
+		if (!config.param.name)
+			config.param.name = strdup("default");
 		config.num_tunnels = 1;
-		config.tunnels = calloc(1, sizeof(struct xkcp_param));
-		if (config.tunnels) {
-			config.tunnels[0] = config.param;
-			if (!config.tunnels[0].name)
-				config.tunnels[0].name = strdup("default");
-		}
+		config.tunnels = NULL;
 	}
 
 	toml_free(root);
@@ -259,16 +273,15 @@ void xkcp_free_config(void)
 		free(config.config_file);
 		config.config_file = NULL;
 	}
-	if (config.tunnels && config.tunnels != &config.param) {
+	if (config.tunnels) {
 		for (int i = 0; i < config.num_tunnels; i++) {
-			if (config.tunnels[i].name) free(config.tunnels[i].name);
-			if (config.tunnels[i].local_interface) free(config.tunnels[i].local_interface);
-			if (config.tunnels[i].remote_addr) free(config.tunnels[i].remote_addr);
-			if (config.tunnels[i].key) free(config.tunnels[i].key);
-			if (config.tunnels[i].crypt) free(config.tunnels[i].crypt);
-			if (config.tunnels[i].mode) free(config.tunnels[i].mode);
+			xkcp_param_free(&config.tunnels[i]);
 		}
 		free(config.tunnels);
 		config.tunnels = NULL;
+		memset(&config.param, 0, sizeof(struct xkcp_param));
+	} else {
+		xkcp_param_free(&config.param);
 	}
+	config.num_tunnels = 0;
 }

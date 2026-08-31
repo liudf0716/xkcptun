@@ -18,7 +18,6 @@
  *                                                                  *
 \********************************************************************/
 
-
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -26,15 +25,12 @@
 
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <errno.h>
-
 #include <syslog.h>
 
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
 #include <event2/listener.h>
 #include <event2/util.h>
-
 
 #include "xkcp_util.h"
 #include "tcp_proxy.h"
@@ -45,22 +41,18 @@
 #include <time.h>
 #include <unistd.h>
 
-extern iqueue_head xkcp_task_list;
-
 static uint32_t next_conv_id = 0;
 
-static uint32_t gen_conv_id(void)
+static uint32_t gen_conv_id(void *tunnel)
 {
 	uint32_t conv;
 
-	/* Loop until we get a conv id that is non-zero and not already in use,
-	 * otherwise a collision would route packets to the wrong task. */
 	do {
 		if (next_conv_id == 0)
 			next_conv_id = (uint32_t)time(NULL) ^ (uint32_t)getpid();
 		next_conv_id = next_conv_id * 1103515245 + 12345;
 		conv = next_conv_id;
-	} while (conv == 0 || xkcp_find_task((IUINT32)conv, NULL) != NULL);
+	} while (conv == 0 || xkcp_find_task((IUINT32)conv, NULL, tunnel) != NULL);
 
 	return conv;
 }
@@ -84,6 +76,7 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct sockaddr *a, int slen, void *param)
 {
 	struct xkcp_proxy_param *p = param;
+	struct xkcp_tunnel *tunnel = p ? p->tunnel : NULL;
 	struct bufferevent *b_in = NULL;
 	struct event_base *base = evconnlistener_get_base(listener);
 
@@ -92,11 +85,15 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
 	assert(b_in);
 	
-	IUINT32 conv = gen_conv_id();
-	ikcpcb *kcp_client 	= ikcp_create(conv, param);
-	xkcp_set_config_param(kcp_client);
+	IUINT32 conv = gen_conv_id(tunnel);
+	ikcpcb *kcp_client = ikcp_create(conv, param);
+	if (tunnel)
+		xkcp_set_tunnel_config_param(kcp_client, &tunnel->param);
+	else
+		xkcp_set_config_param(kcp_client);
 
-	debug(LOG_INFO, "accept new client [%d] in, conv [%u]", fd, conv);
+	debug(LOG_INFO, "[%s] accept new client [%d] in, conv [%u]",
+	      tunnel ? tunnel->name : "default", fd, conv);
 
 	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
 	assert(task);
@@ -105,7 +102,8 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	task->sockaddr = &p->sockaddr;
 	task->last_active = iclock();
 	task->user_owned = 0;
-	add_task_tail(task, &xkcp_task_list);
+	task->tunnel = tunnel;
+	add_task_tail(task, tunnel ? &tunnel->client_task_list : NULL);
 
 	bufferevent_setcb(b_in, tcp_proxy_read_cb, NULL, tcp_proxy_event_cb, task);
 	bufferevent_enable(b_in,  EV_READ | EV_WRITE );

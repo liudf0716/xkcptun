@@ -18,57 +18,46 @@
  *                                                                  *
 \********************************************************************/
 
-
-#include <string.h>
 #include <stdio.h>
+#include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <sys/time.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>		  /* See NOTES */
+#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <net/if.h>
-#include <netinet/tcp.h>
 
 #include <event2/event.h>
-#include <event2/event_struct.h>
-#include <event2/bufferevent.h>
-#include <event2/bufferevent_ssl.h>
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
 #include <event2/listener.h>
 #include <event2/util.h>
 
 #include <syslog.h>
+#include <signal.h>
 
 #include "ikcp.h"
 #include "fec.h"
-#include "jwHash.h"
 #include "xkcp_util.h"
 #include "xkcp_config.h"
-#include "xkcp_mon.h"
 #include "commandline.h"
 #include "debug.h"
-
-#include <signal.h>
+#include "jwHash.h"
 
 struct event_base *g_exit_base = NULL;
+static struct event_base *g_evbase = NULL;
 
-static void sigterm_cb(evutil_socket_t sig, short events, void *arg)
+static inline IINT32 _itimediff(IUINT32 later, IUINT32 earlier)
 {
-	debug(LOG_INFO, "Caught signal %d, shutting down", sig);
-	struct event_base *base = arg;
-	event_base_loopexit(base, NULL);
-}
-
-static int task_list_count = 0;
-
-int get_task_list_count()
-{
-	return task_list_count;
+	return ((IINT32)(later - earlier));
 }
 
 void itimeofday(long *sec, long *usec)
@@ -79,7 +68,6 @@ void itimeofday(long *sec, long *usec)
 	if (usec) *usec = time.tv_usec;
 }
 
-/* get clock in millisecond 64 */
 IINT64 iclock64(void)
 {
 	long s, u;
@@ -89,7 +77,7 @@ IINT64 iclock64(void)
 	return value;
 }
 
-IUINT32 iclock()
+IUINT32 iclock(void)
 {
 	return (IUINT32)(iclock64() & 0xfffffffful);
 }
@@ -136,7 +124,9 @@ char *get_iface_ip(const char *ifname)
 }
 
 static void
-__list_add(iqueue_head *entry, iqueue_head *prev, iqueue_head *next)
+__list_add(iqueue_head *entry,
+	iqueue_head *prev,
+	iqueue_head *next)
 {
 	next->prev = entry;
 	entry->next = next;
@@ -151,20 +141,19 @@ __list_del(iqueue_head *prev, iqueue_head *next)
 	prev->next = next;
 }
 
-/* conv -> task index: avoids the O(n) list scan per UDP packet.
- * Keys are scoped ("c:<conv>" client-side, "s:<ip>:<port>:<conv>" on the
- * server) so identical convs from different peers can never collide. */
+/* conv -> task index backed by scoped hash.
+ * Scoped by tunnel pointer to guarantee multi-tunnel isolation. */
 static jwHashTable *conv_hash = NULL;
 
 static void conv_build_key(char *key, size_t klen, IUINT32 conv,
-			   const struct sockaddr_in *peer)
+			   const struct sockaddr_in *peer, void *tunnel)
 {
 	if (peer)
-		snprintf(key, klen, "s:%u:%u:%u",
+		snprintf(key, klen, "s:%p:%u:%u:%u", tunnel,
 			 ntohl(peer->sin_addr.s_addr), ntohs(peer->sin_port),
 			 conv);
 	else
-		snprintf(key, klen, "c:%u", conv);
+		snprintf(key, klen, "c:%p:%u", tunnel, conv);
 }
 
 void
@@ -178,9 +167,10 @@ add_task_tail(struct xkcp_task *task, iqueue_head *head) {
 	task->conv = task->kcp->conv;
 	if (!conv_hash)
 		conv_hash = create_hash(1024);
-	char key[48];
+	char key[64];
 	conv_build_key(key, sizeof(key), task->conv,
-		       task->user_owned ? task->sockaddr : NULL);
+		       task->user_owned ? task->sockaddr : NULL,
+		       task->tunnel);
 	add_ptr_by_str(conv_hash, key, task);
 }
 
@@ -190,26 +180,36 @@ del_task(struct xkcp_task *task) {
 
 	__list_del(entry->prev, entry->next);
 
-	/* task->conv is cached at add time and stays valid after the kcp is
-	 * released; task->kcp may already dangle here, and task->sockaddr
-	 * may point into a not-yet-freed param the caller owns */
 	if (conv_hash && task->conv) {
-		char key[48];
+		char key[64];
 		struct xkcp_task *cur = NULL;
 
 		conv_build_key(key, sizeof(key), task->conv,
-			       task->user_owned ? task->sockaddr : NULL);
-		/* only drop the index when it still points at us: a new
-		 * task with the same key may have replaced our entry */
+			       task->user_owned ? task->sockaddr : NULL,
+			       task->tunnel);
 		if (get_ptr_by_str(conv_hash, key, (void **)&cur) == HASHOK &&
 		    cur == task)
 			del_by_str(conv_hash, key);
 	}
 }
 
+struct xkcp_task *xkcp_find_task(IUINT32 conv, const struct sockaddr_in *peer, void *tunnel)
+{
+	if (!conv_hash || conv == 0)
+		return NULL;
+
+	char key[64];
+	struct xkcp_task *task = NULL;
+	conv_build_key(key, sizeof(key), conv, peer, tunnel);
+	if (get_ptr_by_str(conv_hash, key, (void **)&task) == HASHOK)
+		return task;
+	return NULL;
+}
+
 struct fec_send_ctx {
 	int fd;
 	struct sockaddr_in *addr;
+	struct xkcp_tunnel *tunnel;
 };
 
 static void fec_send_pkt(void *user, const char *pkt, int len)
@@ -219,100 +219,98 @@ static void fec_send_pkt(void *user, const char *pkt, int len)
 			  sizeof(*ctx->addr));
 
 	if (nret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-		xkcp_enqueue_udp_at(ctx->fd, ctx->addr, pkt, len);
+		xkcp_enqueue_udp_at(ctx->fd, ctx->addr, pkt, len, ctx->tunnel);
 	else if (nret < 0)
 		debug(LOG_ERR, "fec sendto: %s", strerror(errno));
 }
 
-/* ---- UDP egress queue ------------------------------------------------
- * The kernel UDP send buffer is small (net.core.wmem_max is 212KB by
- * default) while one flush can burst a full window (>1MB). A blocking
- * writer would get natural backpressure here; a non-blocking sendto
- * gets EAGAIN, and dropping the packet turns into an RTO storm that
- * also destroys the reverse ACK path. Instead of dropping, queue the
- * datagram in userland and drain it when the socket is writable.      ---- */
-
+/* ---- UDP egress queue ------------------------------------------------ */
 static struct evbuffer *g_udp_pend = NULL;
 static struct event *g_udp_wev = NULL;
 static int g_udp_wev_active = 0;
-static struct event_base *g_evbase = NULL;
 
 void xkcp_set_event_base(struct event_base *base)
 {
 	g_evbase = base;
 }
 
-/* queued entry layout: [sockaddr_in][2-byte payload len][payload] */
 #define UDP_PEND_HDR	(sizeof(struct sockaddr_in) + 2)
 #define UDP_PEND_MAX	(4 * 1024 * 1024)
 
 static void udp_pend_drain_cb(evutil_socket_t fd, short what, void *arg)
 {
+	struct xkcp_tunnel *tunnel = arg;
+	struct evbuffer **p_pend = tunnel ? &tunnel->udp_pend : &g_udp_pend;
+	struct event **p_wev = tunnel ? &tunnel->udp_wev : &g_udp_wev;
+	int *p_active = tunnel ? &tunnel->udp_wev_active : &g_udp_wev_active;
 	char buf[2048];
 
-	(void)what; (void)arg;
+	(void)what;
 
-	while (evbuffer_get_length(g_udp_pend) >= UDP_PEND_HDR) {
+	if (!*p_pend) return;
+
+	while (evbuffer_get_length(*p_pend) >= UDP_PEND_HDR) {
 		struct sockaddr_in sa;
 		uint16_t len;
 		int nret;
 
-		evbuffer_remove(g_udp_pend, &sa, sizeof(sa));
-		evbuffer_remove(g_udp_pend, &len, sizeof(len));
+		evbuffer_remove(*p_pend, &sa, sizeof(sa));
+		evbuffer_remove(*p_pend, &len, sizeof(len));
 		if (len > sizeof(buf)) {
-			/* packet exceeds buffer size, drop payload */
-			evbuffer_drain(g_udp_pend, len);
+			evbuffer_drain(*p_pend, len);
 			continue;
 		}
-		evbuffer_remove(g_udp_pend, buf, len);
+		evbuffer_remove(*p_pend, buf, len);
 
 		nret = sendto(fd, buf, len, 0, (struct sockaddr *)&sa, sizeof(sa));
 		if (nret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-			evbuffer_prepend(g_udp_pend, buf, len);
-			evbuffer_prepend(g_udp_pend, &len, sizeof(len));
-			evbuffer_prepend(g_udp_pend, &sa, sizeof(sa));
-			return;	/* still saturated, wait for the next event */
+			evbuffer_prepend(*p_pend, buf, len);
+			evbuffer_prepend(*p_pend, &len, sizeof(len));
+			evbuffer_prepend(*p_pend, &sa, sizeof(sa));
+			return;
 		}
 	}
 
-	/* fully drained: stop polling writability */
-	if (g_udp_wev_active) {
-		event_del(g_udp_wev);
-		g_udp_wev_active = 0;
+	if (*p_active && *p_wev) {
+		event_del(*p_wev);
+		*p_active = 0;
 	}
 }
 
 void xkcp_enqueue_udp_at(evutil_socket_t fd, const struct sockaddr_in *sa,
-			 const char *buf, int len)
+			 const char *buf, int len, struct xkcp_tunnel *tunnel)
 {
 	uint16_t l = (uint16_t)len;
+	struct evbuffer **p_pend = tunnel ? &tunnel->udp_pend : &g_udp_pend;
+	struct event **p_wev = tunnel ? &tunnel->udp_wev : &g_udp_wev;
+	int *p_active = tunnel ? &tunnel->udp_wev_active : &g_udp_wev_active;
+	struct event_base *base = tunnel ? tunnel->base : g_evbase;
 
-	if (!g_udp_pend) {
-		g_udp_pend = evbuffer_new();
-		g_udp_wev = event_new(g_evbase, fd, EV_WRITE|EV_PERSIST, udp_pend_drain_cb, NULL);
+	if (!*p_pend) {
+		*p_pend = evbuffer_new();
+		if (!*p_pend) return;
+		*p_wev = event_new(base, fd, EV_WRITE|EV_PERSIST, udp_pend_drain_cb, tunnel);
 	}
 
-	if (evbuffer_get_length(g_udp_pend) > UDP_PEND_MAX)
-		return;	/* extreme overload: drop rather than grow without bound */
+	if (evbuffer_get_length(*p_pend) > UDP_PEND_MAX)
+		return;
 
-	evbuffer_add(g_udp_pend, sa, sizeof(*sa));
-	evbuffer_add(g_udp_pend, &l, sizeof(l));
-	evbuffer_add(g_udp_pend, buf, len);
+	evbuffer_add(*p_pend, sa, sizeof(*sa));
+	evbuffer_add(*p_pend, &l, sizeof(l));
+	evbuffer_add(*p_pend, buf, len);
 
-	if (!g_udp_wev_active) {
-		event_add(g_udp_wev, NULL);
-		g_udp_wev_active = 1;
+	if (!*p_active && *p_wev) {
+		event_add(*p_wev, NULL);
+		*p_active = 1;
 	}
 }
 
-/* periodic FEC tick: flush parity for stale partial groups and adapt the
- * parity ratio to the observed loss rate */
 void xkcp_fec_tick(struct xkcp_proxy_param *ptr)
 {
 	if (!ptr || !ptr->fec)
 		return;
 
-	struct fec_send_ctx ctx = { ptr->xkcpfd, &ptr->sockaddr };
+	struct fec_send_ctx ctx = { ptr->xkcpfd, &ptr->sockaddr, ptr->tunnel };
 	fec_conn_tick(ptr->fec, fec_send_pkt, &ctx);
 }
 
@@ -322,15 +320,14 @@ static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	int nret;
 
 	if (ptr->fec) {
-		/* frame + (at group end) parity-protect the segment */
-		struct fec_send_ctx ctx = { ptr->xkcpfd, &ptr->sockaddr };
+		struct fec_send_ctx ctx = { ptr->xkcpfd, &ptr->sockaddr, ptr->tunnel };
 		fec_conn_encode(ptr->fec, buf, len, fec_send_pkt, &ctx);
 		return len;
 	}
 
 	nret = sendto(ptr->xkcpfd, buf, len, 0, (struct sockaddr *)&ptr->sockaddr, sizeof(ptr->sockaddr));
 	if (nret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-		xkcp_enqueue_udp_at(ptr->xkcpfd, &ptr->sockaddr, buf, len);
+		xkcp_enqueue_udp_at(ptr->xkcpfd, &ptr->sockaddr, buf, len, ptr->tunnel);
 		return len;
 	}
 	if (nret < 0)
@@ -340,24 +337,28 @@ static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	return nret;
 }
 
-void xkcp_set_config_param(ikcpcb *kcp)
+void xkcp_set_tunnel_config_param(ikcpcb *kcp, struct xkcp_param *param)
 {
-	struct xkcp_param *param = xkcp_get_param();
-	kcp->output	= xkcp_output;
+	kcp->output = xkcp_output;
 	ikcp_wndsize(kcp, param->sndwnd, param->rcvwnd);
-	/* loss-driven AIMD starts unrestricted and adapts down on loss */
 	kcp->loss_wnd = (param->loss_ctrl != 0) ? kcp->snd_wnd : 0;
-	/* smooth the per-tick burst: a full window in one flush overflows
-	 * shallow buffers on the transit path */
 	kcp->pacing = param->pacing;
 	ikcp_nodelay(kcp, param->nodelay, param->interval, param->resend, param->nc);
-	/* FEC frames add an 8-byte header to every datagram: shrink the KCP
-	 * mtu accordingly so framed packets stay within the path MTU. */
 	if (param->mtu > 0) {
 		int mtu = param->mtu;
 		if (param->fec && mtu > FEC_HDR_SIZE)
 			mtu -= FEC_HDR_SIZE;
 		ikcp_setmtu(kcp, mtu);
+	}
+}
+
+void xkcp_set_config_param(ikcpcb *kcp)
+{
+	struct xkcp_proxy_param *pp = (struct xkcp_proxy_param *)kcp->user;
+	if (pp && pp->tunnel) {
+		xkcp_set_tunnel_config_param(kcp, &pp->tunnel->param);
+	} else {
+		xkcp_set_tunnel_config_param(kcp, xkcp_get_param());
 	}
 }
 
@@ -367,10 +368,9 @@ void xkcp_set_tcp_nodelay(int fd)
 	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 }
 
-void xkcp_apply_sockbuf(int fd)
+void xkcp_apply_sockbuf_param(int fd, struct xkcp_param *param)
 {
-	struct xkcp_param *param = xkcp_get_param();
-	int bufsz = param->sock_buf;
+	if (!param) return;
 
 	if (param->dscp > 0) {
 		int tos = (param->dscp << 2) & 0xFF;
@@ -378,315 +378,118 @@ void xkcp_apply_sockbuf(int fd)
 			debug(LOG_WARNING, "setsockopt IP_TOS [dscp=%d] failed: %s", param->dscp, strerror(errno));
 	}
 
+	int bufsz = param->sock_buf;
 	if (bufsz <= 0)
 		return;
 
-	/* The kernel doubles the requested value and caps it at net.core.*mem_max;
-	 * failures are non-fatal, we just keep the system defaults. */
 	if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &bufsz, sizeof(bufsz)) < 0)
 		debug(LOG_WARNING, "setsockopt SO_RCVBUF [%d] failed: %s", bufsz, strerror(errno));
 	if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &bufsz, sizeof(bufsz)) < 0)
 		debug(LOG_WARNING, "setsockopt SO_SNDBUF [%d] failed: %s", bufsz, strerror(errno));
 }
 
+void xkcp_apply_sockbuf(int fd)
+{
+	xkcp_apply_sockbuf_param(fd, xkcp_get_param());
+}
 
 void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
 {
 	void *puser = NULL;
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
-		/* Unbind callbacks first: bufferevents created with
-		 * BEV_OPT_DEFER_CALLBACKS may still have queued callbacks that
-		 * would otherwise run against a freed task (ctx). */
-		bufferevent_setcb(bev, NULL, NULL, NULL, NULL);
-		if (task) {
-			puser = task->kcp->user;
-			debug(LOG_INFO, "tcp closed conv [%u] what [%d] fd [%d]",
-				  task->kcp->conv, what, bufferevent_getfd(bev));
-			if (task->bev != bev) {
-				bufferevent_free(task->bev);
-				debug(LOG_ERR, "impossible here\n");
-			}
+		debug(LOG_INFO, "tcp closed conv [%u] what [%d] fd [%d]",
+			  task->kcp->conv, what, bufferevent_getfd(bev));
+		if (task->kcp) {
 			ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
 			ikcp_flush(task->kcp);
+			puser = task->kcp->user;
 			ikcp_release(task->kcp);
-			del_task(task);
-			free(task);
+			task->kcp = NULL;
 		}
+		del_task(task);
 		bufferevent_free(bev);
-	} else if (what & BEV_EVENT_CONNECTED) {
-		xkcp_set_tcp_nodelay(bufferevent_getfd(bev));
+		free(task);
 	}
-
 	return puser;
 }
 
-/* KCP ingress backpressure. The TCP peer (e.g. sshd) can drain into
- * ikcp_send far faster than the KCP/UDP path can carry; without a bound
- * the UDP socket send buffer saturates and every flush drops packets
- * wholesale (EAGAIN), including ACKs, collapsing the session into an
- * RTO storm. Above the high watermark we stop reading from the TCP
- * socket: its receive buffer fills, the TCP window closes and the peer
- * is throttled at the source. The timer re-enables reading below the
- * low watermark. */
-#define XKCP_SND_QUE_HIGH	256	/* queued KCP segments */
-#define XKCP_SND_QUE_LOW	64
-
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 {
-	char buf[2048];
-	int  len, nret;
+	char obuf[OBUF_SIZE];
 	struct evbuffer *input = bufferevent_get_input(bev);
-
-	if (kcp->nsnd_que > XKCP_SND_QUE_HIGH) {
-		bufferevent_disable(bev, EV_READ);
-		return;
-	}
-
-	while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) {
-		nret = ikcp_send(kcp, buf, len);
-		if (nret < 0)
-			debug(LOG_INFO, "ikcp_send conv [%u] failed [%d] len [%d]",
-				  kcp->conv, nret, len);
-		if (kcp->nsnd_que > XKCP_SND_QUE_HIGH) {
-			bufferevent_disable(bev, EV_READ);
+	int nrecv = 0;
+	while (1) {
+		nrecv = evbuffer_remove(input, obuf, sizeof(obuf));
+		if (nrecv <= 0)
 			break;
-		}
-	}
-	ikcp_flush(kcp);
-}
-
-static void dump_task(struct xkcp_task *task, struct bufferevent *bev, int index) {
-	struct evbuffer *output = bufferevent_get_output(bev);
-	ikcpcb *kcp = task->kcp;
-	IUINT32 inflight = kcp->snd_nxt - kcp->snd_una;
-	int retrans_pct = kcp->snd_pkts > 0
-			  ? (int)(kcp->loss_pkts * 100 / kcp->snd_pkts) : 0;
-	evbuffer_add_printf(output,
-			"[%d]\t connection [%d]\t conv [%u]:\n --->state [%d] nrcv_buf [%d] "
-			"nsnd_buf [%d] nrcv_que [%d] nsnd_que [%d] rcv_nxt [%d] probe [%d] "
-			"peek  [%d] stream [%d]\n"
-			"      srtt [%d ms] rto [%d ms] inflight [%u] cwnd [%u] loss_wnd [%u] "
-			"snd_pkts [%u] loss_pkts [%u] retrans [%d%%]\n",
-			index, bufferevent_getfd(task->bev), kcp->conv, kcp->state,
-			kcp->nrcv_buf, kcp->nsnd_buf, kcp->nrcv_que,
-			kcp->nsnd_que, kcp->rcv_nxt, kcp->probe,
-			ikcp_peeksize(kcp), kcp->stream,
-			kcp->rx_srtt, kcp->rx_rto, inflight, kcp->cwnd, kcp->loss_wnd,
-			kcp->snd_pkts, kcp->loss_pkts, retrans_pct);
-}
-
-int get_task_list_size(iqueue_head *task_list)
-{
-	struct xkcp_task *task;
-	int num = 0;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp) {
-			num++;
-		}
-	}
-
-	return num;
-}
-
-void dump_task_list(iqueue_head *task_list, struct bufferevent *bev) {
-	struct xkcp_task *task;
-	task_list_count = 0;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		/* skip tasks already torn down: kcp released or bev closed */
-		if (task->kcp && task->bev) {
-			dump_task(task, bev, ++task_list_count);
-		}
+		ikcp_send(kcp, obuf, nrecv);
 	}
 }
 
 void xkcp_forward_all_data(iqueue_head *task_list)
 {
-	iqueue_head *p, *n;
-	for (p = task_list->next; p != task_list; p = n) {
-		n = p->next;
-		struct xkcp_task *task = iqueue_entry(p, struct xkcp_task, head);
-		if (task->kcp) {
-			xkcp_forward_data(task);
-		}
+	struct xkcp_task *task;
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		xkcp_forward_data(task);
 	}
 }
 
-/* stop draining KCP into TCP when downstream is slower than the tunnel;
- * data stays in the KCP receive queue, its window closes and backpressure
- * propagates to the sender. The periodic timer resumes draining. */
-#define XKCP_TCP_OUTBUF_LIMIT	(256 * 1024)
-
 void xkcp_forward_data(struct xkcp_task *task)
 {
-	char sbuf[OBUF_SIZE];
-	IUINT32 now = iclock();
-
-	/* a backed-up connection is still active: update liveness here too,
-	 * or the timeout sweep would kill it while it waits for the slow
-	 * downstream to drain */
-	task->last_active = now;
-
-	if (task->bev &&
-	    evbuffer_get_length(bufferevent_get_output(task->bev)) >
-	    XKCP_TCP_OUTBUF_LIMIT)
-		return;
+	char buf[BUF_RECV_LEN];
+	int nrecv = 0;
+	ikcpcb *kcp = task->kcp;
+	struct bufferevent *bev = task->bev;
 
 	while (1) {
-		/* Ask KCP for the exact size of the next complete packet so a
-		 * payload larger than OBUF_SIZE can never get stuck in the
-		 * receive queue (ikcp_recv would return -3 forever). */
-		int peeksize = ikcp_peeksize(task->kcp);
-		if (peeksize < 0)
+		nrecv = ikcp_recv(kcp, buf, sizeof(buf));
+		if (nrecv <= 0)
 			break;
 
-		char *obuf = sbuf;
-		char *heapbuf = NULL;
-		if (peeksize > (int)sizeof(sbuf)) {
-			heapbuf = malloc(peeksize);
-			if (!heapbuf) {
-				debug(LOG_ERR, "conv [%u] alloc %d bytes for recv failed",
-					  task->kcp->conv, peeksize);
-				break;
-			}
-			obuf = heapbuf;
-		}
-
-		int nrecv = ikcp_recv(task->kcp, obuf, peeksize);
-		if (nrecv < 0) {
-			free(heapbuf);
-			break;
-		}
-
-		if (nrecv == XKCP_CLOSE_SIGNAL_LEN && memcmp(obuf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
-			debug(LOG_INFO, "conv [%u] received close signal", task->kcp->conv);
-			free(heapbuf);
-			struct xkcp_proxy_param *param = NULL;
-			if (task->user_owned)
-				param = (struct xkcp_proxy_param *)task->kcp->user;
-
-			if (task->bev) {
-				bufferevent_setcb(task->bev, NULL, NULL, NULL, NULL);
-				bufferevent_free(task->bev);
-				task->bev = NULL;
-			}
-			ikcp_release(task->kcp);
-			task->kcp = NULL;
+		if (nrecv == XKCP_CLOSE_SIGNAL_LEN &&
+			memcmp(buf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
+			debug(LOG_INFO, "conv [%u] received close signal, closing tcp connection", task->conv);
+			bufferevent_free(bev);
 			del_task(task);
-			if (param)
-				free(param);
+			if (task->user_owned && task->kcp) {
+				void *puser = task->kcp->user;
+				ikcp_release(task->kcp);
+				if (puser) free(puser);
+			} else if (task->kcp) {
+				ikcp_release(task->kcp);
+			}
 			free(task);
 			return;
 		}
 
-		if (task->bev)
-			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
-
-		free(heapbuf);
+		bufferevent_write(bev, buf, nrecv);
+		task->last_active = iclock();
 	}
-}
-
-struct xkcp_task *
-get_task_from_conv(IUINT32 conv, iqueue_head *task_list)
-{
-	struct xkcp_task *task;
-	iqueue_foreach(task, task_list, xkcp_task_type, head)
-		if (task->kcp && task->kcp->conv == conv)
-			return task;
-
-	return NULL;
-}
-
-struct xkcp_task *
-xkcp_find_task(IUINT32 conv, const struct sockaddr_in *peer)
-{
-	char key[48];
-	struct xkcp_task *task = NULL;
-
-	if (!conv_hash)
-		return NULL;
-	conv_build_key(key, sizeof(key), conv, peer);
-	if (get_ptr_by_str(conv_hash, key, (void **)&task) == HASHOK)
-		return (task && task->kcp) ? task : NULL;
-	return NULL;
-}
-
-ikcpcb *
-get_kcp_from_conv(IUINT32 conv, iqueue_head *task_list)
-{
-	struct xkcp_task *task;
-	iqueue_foreach(task, task_list, xkcp_task_type, head)
-		if (task->kcp && task->kcp->conv == conv) {
-			return task->kcp;
-		}
-
-	return NULL;
-}
-
-int xkcp_main(int argc, char **argv)
-{
-	struct xkcp_config *config = xkcp_get_config();
-
-	config_init();
-
-	parse_commandline(argc, argv);
-
-	xkcp_apply_mode();
-
-	if (config->main_loop == NULL) {
-		debug(LOG_ERR, "should set main_loop firstly");
-		exit(EXIT_FAILURE);
-	}
-
-	if (config->daemon) {
-
-		debug(LOG_INFO, "Forking into background");
-
-		switch (fork()) {
-		case 0:				/* child */
-			setsid();
-			config->main_loop();
-			break;
-
-		default:			   /* parent */
-			exit(0);
-			break;
-		}
-	} else {
-		config->main_loop();
-	}
-
-	return (0);				 /* never reached */
-}
-
-void
-set_timer_interval(struct event *timeout)
-{
-	int interval_ms = xkcp_get_param()->interval;
-	struct timeval tv;
-
-	if (interval_ms < 1)
-		interval_ms = 10;
-	evutil_timerclear(&tv);
-	tv.tv_sec = interval_ms / 1000;
-	tv.tv_usec = (interval_ms % 1000) * 1000;
-	event_add(timeout, &tv);
 }
 
 void xkcp_update_task_list(iqueue_head *task_list)
 {
 	struct xkcp_task *task;
-	IUINT32 now = iclock();
-
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		if (task->kcp) {
-			ikcp_update(task->kcp, now);
-			/* resume a TCP peer paused by KCP ingress backpressure
-			 * once the send queue has drained */
-			if (task->bev && task->kcp->nsnd_que < XKCP_SND_QUE_LOW &&
-			    !(bufferevent_get_enabled(task->bev) & EV_READ))
-				bufferevent_enable(task->bev, EV_READ);
+			ikcp_update(task->kcp, iclock());
+			xkcp_forward_data(task);
 		}
 	}
+}
+
+void set_timer_interval_ms(struct event *timeout, int interval_ms)
+{
+	struct timeval tv;
+	if (interval_ms <= 0) interval_ms = 20;
+	tv.tv_sec = interval_ms / 1000;
+	tv.tv_usec = (interval_ms % 1000) * 1000;
+	evtimer_add(timeout, &tv);
+}
+
+void set_timer_interval(struct event *timeout)
+{
+	set_timer_interval_ms(timeout, xkcp_get_param()->interval);
 }
 
 void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
@@ -696,59 +499,90 @@ void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
 	set_timer_interval(timeout);
 }
 
-void xkcp_task_check_timeout(iqueue_head *task_list)
+ikcpcb *get_kcp_from_conv(IUINT32 conv, iqueue_head *task_list)
 {
-	int conn_timeout = xkcp_get_param()->conn_timeout;
-	if (conn_timeout <= 0)
+	struct xkcp_task *task;
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		if (task->kcp && task->kcp->conv == conv)
+			return task->kcp;
+	}
+	return NULL;
+}
+
+struct xkcp_task *get_task_from_conv(IUINT32 conv, iqueue_head *task_list)
+{
+	struct xkcp_task *task;
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		if (task->kcp && task->kcp->conv == conv)
+			return task;
+	}
+	return NULL;
+}
+
+int get_task_list_size(iqueue_head *task_list)
+{
+	int count = 0;
+	struct xkcp_task *task;
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		count++;
+	}
+	return count;
+}
+
+void dump_task_list(iqueue_head *task_list, struct bufferevent *bev)
+{
+	struct xkcp_task *task;
+	struct evbuffer *output = bufferevent_get_output(bev);
+	int count = 0;
+	iqueue_foreach(task, task_list, xkcp_task_type, head) {
+		count++;
+		evbuffer_add_printf(output, "\t[%d] conv [%u] \n", count, task->conv);
+	}
+	if (count == 0)
+		evbuffer_add_printf(output, "\tno active connections\n");
+}
+
+void xkcp_task_check_timeout_val(iqueue_head *task_list, int timeout_sec)
+{
+	if (timeout_sec <= 0)
 		return;
 
 	IUINT32 now = iclock();
-	IUINT32 timeout_ms = (IUINT32)conn_timeout * 1000;
-	struct xkcp_task *task;
+	IUINT32 timeout_ms = (IUINT32)timeout_sec * 1000;
 	iqueue_head *p, *n;
 
-	for (p = task_list->next; p != task_list; p = n) {
-		n = p->next;
-		task = iqueue_entry(p, struct xkcp_task, head);
-		if (!task->kcp)
-			continue;
-
-		IUINT32 idle = now - task->last_active;
-		if (idle > timeout_ms) {
+	for (p = task_list->next, n = p->next; p != task_list; p = n, n = p->next) {
+		struct xkcp_task *task = iqueue_entry(p, struct xkcp_task, head);
+		if (_itimediff(now, task->last_active) > (IINT32)timeout_ms) {
 			debug(LOG_INFO, "task conv [%u] timed out after %d seconds, closing",
-				  task->kcp->conv, conn_timeout);
-
-			struct xkcp_proxy_param *param = NULL;
-			if (task->user_owned)
-				param = (struct xkcp_proxy_param *)task->kcp->user;
-
-			ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
-			ikcp_flush(task->kcp);
-			ikcp_release(task->kcp);
-
-			if (task->bev) {
-				bufferevent_setcb(task->bev, NULL, NULL, NULL, NULL);
+			      task->conv, timeout_sec);
+			if (task->bev)
 				bufferevent_free(task->bev);
-				task->bev = NULL;
-			}
-
-			/* Remove from the list and conv index BEFORE freeing
-			 * param: del_task builds the index key from
-			 * task->sockaddr, which points into param. Freeing
-			 * param first makes the key read freed memory, and a
-			 * mismatched key leaves a stale hash entry that later
-			 * crashes xkcp_find_task with a use-after-free. */
 			del_task(task);
-			task->kcp = NULL;
-			if (param)
-				free(param);
+			if (task->kcp) {
+				void *puser = task->user_owned ? task->kcp->user : NULL;
+				ikcp_release(task->kcp);
+				if (puser) free(puser);
+			}
 			free(task);
 		}
 	}
 }
 
+void xkcp_task_check_timeout(iqueue_head *task_list)
+{
+	xkcp_task_check_timeout_val(task_list, xkcp_get_param()->conn_timeout);
+}
+
 static struct event *g_sigterm_ev = NULL;
 static struct event *g_sigint_ev = NULL;
+
+static void sigterm_cb(evutil_socket_t sig, short events, void *user_data)
+{
+	struct event_base *base = user_data;
+	debug(LOG_INFO, "Caught signal %d, shutting down", sig);
+	event_base_loopbreak(base);
+}
 
 void xkcp_setup_signals(struct event_base *base)
 {
@@ -786,31 +620,36 @@ void xkcp_cleanup_udp_queue(void)
 		evbuffer_free(g_udp_pend);
 		g_udp_pend = NULL;
 	}
+	if (conv_hash) {
+		delete_hash(conv_hash, NULL, HASHPTR, HASHSTRING);
+		conv_hash = NULL;
+	}
 }
 
-struct evconnlistener *xkcp_create_listener(struct event_base *base, short port, void *ptr)
+int xkcp_main(int argc, char **argv)
 {
-	struct sockaddr_in sin;
-	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
-	if (!addr) {
-		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
-		exit(EXIT_FAILURE);
+	config_init();
+	parse_commandline(argc, argv);
+
+	xkcp_apply_mode();
+
+	if (xkcp_get_config()->syslog) {
+		debugconf.log_syslog = 1;
 	}
 
-	memset(&sin, 0, sizeof(sin));
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = inet_addr(addr);
-	sin.sin_port = htons(port);
-
-	struct evconnlistener *listener = evconnlistener_new_bind(base, xkcp_mon_accept_cb, ptr,
-		LEV_OPT_CLOSE_ON_FREE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_REUSEABLE,
-		-1, (struct sockaddr*)&sin, sizeof(sin));
-	if (!listener) {
-		debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
-		free(addr);
-		exit(EXIT_FAILURE);
+	if (xkcp_get_config()->daemon) {
+		if (daemon(1, 1)) {
+			debug(LOG_ERR, "daemon failed: %s", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
 	}
 
-	free(addr);
-	return listener;
+	if (!xkcp_get_config()->main_loop) {
+		debug(LOG_ERR, "main_loop is NULL!");
+		return 1;
+	}
+
+	int ret = xkcp_get_config()->main_loop();
+	xkcp_free_config();
+	return ret;
 }

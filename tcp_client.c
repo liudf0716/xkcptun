@@ -18,7 +18,6 @@
  *                                                                  *
 \********************************************************************/
 
-
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -26,8 +25,6 @@
 
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <errno.h>
-
 #include <syslog.h>
 
 #include <event2/bufferevent.h>
@@ -42,15 +39,17 @@
 #include "ikcp.h"
 #include "jwHash.h"
 
-
 void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 {
+	struct xkcp_task *task = ctx;
+	struct xkcp_tunnel *tunnel = task ? task->tunnel : NULL;
 	void *puser = xkcp_tcp_event_cb(bev, what, ctx);
 	if (puser)
 		free(puser);
 
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
-		clean_useless_client();
+		if (tunnel)
+			clean_useless_client(tunnel);
 	}
 }
 

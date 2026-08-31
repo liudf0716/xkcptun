@@ -79,6 +79,8 @@ struct xkcp_param *xkcp_get_param(void);
 
 void xkcp_param_init(struct xkcp_param *param);
 
+void xkcp_param_free(struct xkcp_param *param);
+
 int xkcp_parse_param(const char *filename);
 
 void xkcp_apply_mode_param(struct xkcp_param *param);

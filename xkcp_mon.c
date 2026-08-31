@@ -17,6 +17,7 @@
  * Boston, MA  02111-1307,  USA       gnu@gnu.org                   *
  *                                                                  *
 \********************************************************************/
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -25,14 +26,12 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <errno.h>
+#include <syslog.h>
 
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
 #include <event2/listener.h>
 #include <event2/util.h>
-
-#include <syslog.h>
 
 #include "xkcp_mon.h"
 #include "xkcp_util.h"
@@ -40,88 +39,147 @@
 #include "debug.h"
 #include "jwHash.h"
 
-static int xkcp_server_flag = 0;
-
-typedef void (*spy_cmd_process)(struct bufferevent *bev, void *ctx);
+typedef void (*spy_cmd_process)(struct bufferevent *bev, void *ctx, const char *arg);
 
 struct user_spy_cmd {
 	char *command;
 	spy_cmd_process cmd_process;
 };
 
-static void get_client_status(struct bufferevent *bev, void *ctx);
-static void get_server_status(struct bufferevent *bev, void *ctx);
-static void get_client_info(struct bufferevent *bev, void *ctx);
+static void get_client_list(struct bufferevent *bev, void *ctx, const char *arg);
+static void get_client_status(struct bufferevent *bev, void *ctx, const char *arg);
+static void get_server_list(struct bufferevent *bev, void *ctx, const char *arg);
+static void get_server_status(struct bufferevent *bev, void *ctx, const char *arg);
 
 struct user_spy_cmd client_cmd[] = {
+	{"list", get_client_list},
 	{"status", get_client_status},
 	{NULL, NULL}
 };
 
 struct user_spy_cmd server_cmd[] = {
+	{"list", get_server_list},
 	{"status", get_server_status},
-	{"client", get_client_info},
+	{"client", get_server_list},
 	{NULL, NULL}
 };
 
-int set_xkcp_server_flag(int flag)
+static void get_client_list(struct bufferevent *bev, void *ctx, const char *arg)
 {
-	xkcp_server_flag = flag;
-    return 0;
-}
-
-static void get_client_status(struct bufferevent *bev, void *ctx)
-{
-	dump_task_list(ctx, bev);
-}
-
-static void get_client_info(struct bufferevent *bev, void *ctx)
-{
-	jwHashTable *xkcp_hash = ctx;
+	struct xkcp_manager *mgr = ctx;
 	struct evbuffer *output = bufferevent_get_output(bev);
-	evbuffer_add_printf(output, "client list:\n");
-	for(int i = 0; i < xkcp_hash->buckets; i++) {
-		jwHashEntry *entry = xkcp_hash->bucket[i];
-		while (entry) {
-			evbuffer_add_printf(output, "hash_id [%d] connected client [%s] connection [%d] \n", 
-								i, entry->key.strValue, get_task_list_size(entry->value.ptrValue));
-			entry = entry->next;
-		}
+	(void)arg;
+
+	if (!mgr) return;
+
+	evbuffer_add_printf(output, "xkcptun client tunnels (%d total):\n", mgr->num_tunnels);
+	struct xkcp_tunnel *t;
+	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
+		int conns = get_task_list_size(&t->client_task_list);
+		evbuffer_add_printf(output, "  - [%s] :%d -> %s:%d (mode: %s, fec: %d, conns: %d)\n",
+				    t->name, t->param.local_port, t->param.remote_addr,
+				    t->param.remote_port, t->param.mode ? t->param.mode : "fast3",
+				    t->param.fec, conns);
 	}
 }
 
-static void get_server_status(struct bufferevent *bev, void *ctx)
+static void get_client_status(struct bufferevent *bev, void *ctx, const char *arg)
 {
-	jwHashTable *xkcp_hash = ctx;
+	struct xkcp_manager *mgr = ctx;
 	struct evbuffer *output = bufferevent_get_output(bev);
-	evbuffer_add_printf(output, "client detail list:\n");
-	for(int i = 0; i < xkcp_hash->buckets; i++) {
-		jwHashEntry *entry = xkcp_hash->bucket[i];
-		while (entry) {
-			evbuffer_add_printf(output, "hash_id [%d] connected client [%s]: \n", i, entry->key.strValue);
-			dump_task_list(entry->value.ptrValue, bev);
-			entry = entry->next;
+
+	if (!mgr) return;
+
+	struct xkcp_tunnel *t;
+	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
+		if (arg && strlen(arg) > 0 && strcmp(arg, t->name) != 0)
+			continue;
+		evbuffer_add_printf(output, "tunnel [%s] (: %d -> %s:%d):\n",
+				    t->name, t->param.local_port, t->param.remote_addr, t->param.remote_port);
+		dump_task_list(&t->client_task_list, bev);
+	}
+}
+
+static void get_server_list(struct bufferevent *bev, void *ctx, const char *arg)
+{
+	struct xkcp_manager *mgr = ctx;
+	struct evbuffer *output = bufferevent_get_output(bev);
+	(void)arg;
+
+	if (!mgr) return;
+
+	evbuffer_add_printf(output, "xkcptun server tunnels (%d total):\n", mgr->num_tunnels);
+	struct xkcp_tunnel *t;
+	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
+		int total_clients = 0;
+		if (t->server_xkcp_hash) {
+			for (int i = 0; i < t->server_xkcp_hash->buckets; i++) {
+				jwHashEntry *entry = t->server_xkcp_hash->bucket[i];
+				while (entry) {
+					total_clients++;
+					entry = entry->next;
+				}
+			}
+		}
+		evbuffer_add_printf(output, "  - [%s] UDP :%d -> TCP %s:%d (mode: %s, fec: %d, peers: %d)\n",
+				    t->name, t->param.local_port, t->param.remote_addr,
+				    t->param.remote_port, t->param.mode ? t->param.mode : "fast3",
+				    t->param.fec, total_clients);
+	}
+}
+
+static void get_server_status(struct bufferevent *bev, void *ctx, const char *arg)
+{
+	struct xkcp_manager *mgr = ctx;
+	struct evbuffer *output = bufferevent_get_output(bev);
+
+	if (!mgr) return;
+
+	struct xkcp_tunnel *t;
+	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
+		if (arg && strlen(arg) > 0 && strcmp(arg, t->name) != 0)
+			continue;
+
+		evbuffer_add_printf(output, "tunnel [%s] (UDP :%d -> TCP %s:%d):\n",
+				    t->name, t->param.local_port, t->param.remote_addr, t->param.remote_port);
+		if (t->server_xkcp_hash) {
+			for (int i = 0; i < t->server_xkcp_hash->buckets; i++) {
+				jwHashEntry *entry = t->server_xkcp_hash->bucket[i];
+				while (entry) {
+					evbuffer_add_printf(output, "  peer [%s]:\n", entry->key.strValue);
+					dump_task_list((iqueue_head *)entry->value.ptrValue, bev);
+					entry = entry->next;
+				}
+			}
 		}
 	}
 }
 
-static void process_user_cmd(struct bufferevent *bev, const char *cmd, void *ctx)
+static void process_user_cmd(struct bufferevent *bev, const char *cmd_line, void *ctx)
 {
-	if (xkcp_server_flag) {
-		for(int i = 0; server_cmd[i].command != NULL; i++) {
-			if (strcmp(cmd, server_cmd[i].command) == 0) 
-				server_cmd[i].cmd_process(bev, ctx);
-		}
-	} else {
-		for(int i = 0; client_cmd[i].command != NULL; i++) {
-			if (strcmp(cmd, client_cmd[i].command) == 0) 
-				client_cmd[i].cmd_process(bev, ctx);
+	struct xkcp_manager *mgr = ctx;
+	char cmd[64] = {0};
+	char arg[128] = {0};
+
+	sscanf(cmd_line, "%63s %127s", cmd, arg);
+
+	struct user_spy_cmd *table = (mgr && mgr->is_server) ? server_cmd : client_cmd;
+
+	for (int i = 0; table[i].command != NULL; i++) {
+		if (strcmp(cmd, table[i].command) == 0) {
+			table[i].cmd_process(bev, ctx, arg);
+			return;
 		}
 	}
+
+	/* Default fallback for bare "status" or empty command */
+	if (table[0].cmd_process)
+		table[0].cmd_process(bev, ctx, arg);
 }
 
 static void xkcp_mon_event_cb(struct bufferevent *bev, short what, void *ctx)
 {
+	(void)ctx;
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		bufferevent_free(bev);
 	}
@@ -129,10 +187,10 @@ static void xkcp_mon_event_cb(struct bufferevent *bev, short what, void *ctx)
 
 static void xkcp_mon_write_cb(struct bufferevent *bev, void *ctx)
 {
+	(void)ctx;
 	struct evbuffer *output = bufferevent_get_output(bev);
-    if (evbuffer_get_length(output) == 0)
-        bufferevent_free(bev);
-
+	if (evbuffer_get_length(output) == 0)
+		bufferevent_free(bev);
 }
 
 static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx)
@@ -141,11 +199,16 @@ static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx)
 	int len = evbuffer_get_length(input);
 
 	if (len > 0) { 
-		char *buf = malloc(len+1);
+		char *buf = malloc(len + 1);
 		if (buf) {
-			memset(buf, 0, len+1);
-			if (evbuffer_remove(input, buf, len) > 0)
+			memset(buf, 0, len + 1);
+			if (evbuffer_remove(input, buf, len) > 0) {
+				/* Strip trailing newlines / spaces */
+				while (len > 0 && (buf[len - 1] == '\r' || buf[len - 1] == '\n' || buf[len - 1] == ' ')) {
+					buf[--len] = '\0';
+				}
 				process_user_cmd(bev, buf, ctx);
+			}
 			free(buf);
 		}
 	}
@@ -154,6 +217,7 @@ static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx)
 void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct sockaddr *a, int slen, void *ptr)
 {
+	(void)a; (void)slen;
 	struct bufferevent *b_in = NULL;
 	struct event_base *base = evconnlistener_get_base(listener);
 	
@@ -168,26 +232,20 @@ void xkcp_mon_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, short port, void *ptr)
 {
 	struct sockaddr_in sin;
-	char *addr = get_iface_ip(xkcp_get_param()->local_interface);
-	if (!addr) {
-		debug(LOG_ERR, "get_iface_ip [%s] failed", xkcp_get_param()->local_interface);
-		exit(EXIT_FAILURE);
+	memset(&sin, 0, sizeof(sin));
+	sin.sin_family = AF_INET;
+	sin.sin_addr.s_addr = htonl(INADDR_ANY);
+	sin.sin_port = htons(port);
+
+	struct evconnlistener *listener = evconnlistener_new_bind(
+		base, xkcp_mon_accept_cb, ptr,
+		LEV_OPT_CLOSE_ON_FREE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_REUSEABLE,
+		-1, (struct sockaddr*)&sin, sizeof(sin));
+	if (!listener) {
+		debug(LOG_WARNING, "Couldn't create mon listener on port %d: [%s]", port, strerror(errno));
+		return NULL;
 	}
 
-	memset(&sin, 0, sizeof(sin));
-    sin.sin_family = AF_INET;
-    sin.sin_addr.s_addr = inet_addr(addr);
-    sin.sin_port = htons(port);
-
-    struct evconnlistener * listener = evconnlistener_new_bind(base, xkcp_mon_accept_cb, ptr,
-	    LEV_OPT_CLOSE_ON_FREE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_REUSEABLE,
-	    -1, (struct sockaddr*)&sin, sizeof(sin));
-    if (!listener) {
-    	debug(LOG_ERR, "Couldn't create listener: [%s]", strerror(errno));
-    	free(addr);
-    	exit(EXIT_FAILURE);
-    }
-
-    free(addr);
-    return listener;
+	debug(LOG_INFO, "Monitor listening on 0.0.0.0:%d", port);
+	return listener;
 }
