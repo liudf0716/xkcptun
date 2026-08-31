@@ -64,7 +64,6 @@ static void client_handle_packet(struct xkcp_tunnel *tunnel, char *buf, int nrec
 		debug(LOG_INFO, "[%s] conv [%u] ikcp_input failed",
 		      tunnel ? tunnel->name : "default", conv);
 
-	ikcp_flush(task->kcp);
 	xkcp_forward_data(task);
 }
 

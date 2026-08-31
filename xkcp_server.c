@@ -157,13 +157,19 @@ static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	(void)fd;
 	(void)event;
 
+	IUINT32 now = iclock();
+	static IUINT32 last_cleanup = 0;
+
 	if (tunnel->server_xkcp_hash) {
 		hash_iterator(tunnel->server_xkcp_hash, (void*)xkcp_update_task_list, HASHPTR);
-		hash_iterator(tunnel->server_xkcp_hash, (void*)xkcp_task_check_timeout, HASHPTR);
-		clean_useless_client(tunnel);
+		if ((IINT32)(now - last_cleanup) >= 1000) {
+			hash_iterator(tunnel->server_xkcp_hash, (void*)xkcp_task_check_timeout, HASHPTR);
+			clean_useless_client(tunnel);
+			sweep_idle_peer_fec(tunnel);
+			last_cleanup = now;
+		}
 		hash_iterator(tunnel->server_xkcp_hash, (void*)server_tick_task_list, HASHPTR);
 	}
-	sweep_idle_peer_fec(tunnel);
 
 	set_timer_interval_ms(&tunnel->timer_event, tunnel->param.interval);
 }
@@ -261,7 +267,6 @@ static void server_handle_packet(struct xkcp_tunnel *tunnel, const int xkcpfd,
 	if (task->kcp) {
 		if (ikcp_input(task->kcp, buf, nrecv) < 0)
 			debug(LOG_INFO, "[%s] conv [%u] ikcp_input failed", tunnel->name, conv);
-		ikcp_flush(task->kcp);
 		xkcp_forward_data(task);
 	}
 }
