@@ -36,9 +36,9 @@
 #include <netinet/in.h>
 
 #define HTTP_IP_ADDR_LEN	16
-#define	OBUF_SIZE 			4096
-#define	BUF_RECV_LEN		4096
-#define XKCP_RECV_BUF_LEN	4096
+#define	OBUF_SIZE 			65536
+#define	BUF_RECV_LEN		65536
+#define XKCP_RECV_BUF_LEN	65536
 #define XKCP_SEND_BUF_LEN	(10 * 15000)
 
 #define XKCP_CLOSE_SIGNAL	"\xff\xff\xff\xff"
