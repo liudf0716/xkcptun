@@ -72,7 +72,7 @@ void xkcp_param_init(struct xkcp_param *param)
 	param->nc = 1;
 	param->loss_ctrl = 0;
 	param->pacing = 128;
-	param->fec = 0;
+	param->fec = 1;
 	param->sock_buf = 4194304;
 	param->keepalive = 10;
 	param->conn_timeout = 60;
