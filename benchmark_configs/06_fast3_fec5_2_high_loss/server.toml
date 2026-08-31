@@ -1,0 +1,22 @@
+# ========================================================
+# 模式 6: 高抗丢包配置 (fast3 + FEC 5:2, 40% 冗余, 适合恶劣弱网) - 服务端配置 (server.toml)
+# ========================================================
+[global]
+syslog = true
+mon_port = 9087
+mode = "fast3"
+fec = 1
+sndwnd = 1024
+rcvwnd = 1024
+data_shard = 5
+parity_shard = 2
+pacing = 128
+loss_ctrl = 0
+sock_buf = 4194304
+
+# 单端口统一监听，支持客户端动态首包目标协商
+[[tunnel]]
+name = "ssh_tunnel"
+local_port = 9089
+remote_addr = "127.0.0.1"
+remote_port = 27334

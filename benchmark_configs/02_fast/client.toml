@@ -1,0 +1,24 @@
+# ========================================================
+# 模式 2: fast (无 FEC, 内部时钟 20ms, 开启常规拥塞控制) - 客户端配置 (client.toml)
+# ========================================================
+[global]
+syslog = false
+mon_port = 9085
+remote_addr = "172.96.252.145"
+remote_port = 9089
+mode = "fast"
+fec = 0
+sndwnd = 1024
+rcvwnd = 1024
+data_shard = 10
+parity_shard = 3
+pacing = 0
+loss_ctrl = 0
+sock_buf = 4194304
+
+[[tunnel]]
+name = "host_ssh_tunnel"
+local_interface = "127.0.0.1"
+local_port = 2222
+target_port = 27334
+target_addr = "127.0.0.1"

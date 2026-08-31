@@ -1,0 +1,22 @@
+# ========================================================
+# 模式 8: 超大窗口 (fast3 + FEC 10:3, 窗口 2048, 适合大带宽骨干) - 服务端配置 (server.toml)
+# ========================================================
+[global]
+syslog = true
+mon_port = 9087
+mode = "fast3"
+fec = 1
+sndwnd = 2048
+rcvwnd = 2048
+data_shard = 10
+parity_shard = 3
+pacing = 0
+loss_ctrl = 0
+sock_buf = 4194304
+
+# 单端口统一监听，支持客户端动态首包目标协商
+[[tunnel]]
+name = "ssh_tunnel"
+local_port = 9089
+remote_addr = "127.0.0.1"
+remote_port = 27334

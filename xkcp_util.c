@@ -420,6 +420,10 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 	struct evbuffer *input = bufferevent_get_input(bev);
 	int nrecv = 0;
 	while (1) {
+		if (ikcp_waitsnd(kcp) >= (int)(kcp->snd_wnd * 2)) {
+			bufferevent_disable(bev, EV_READ);
+			break;
+		}
 		nrecv = evbuffer_remove(input, obuf, sizeof(obuf));
 		if (nrecv <= 0)
 			break;
@@ -556,6 +560,9 @@ void xkcp_update_task_list(iqueue_head *task_list)
 		if (task->kcp) {
 			ikcp_update(task->kcp, iclock());
 			xkcp_forward_data(task);
+			if (task->bev && ikcp_waitsnd(task->kcp) < (int)task->kcp->snd_wnd) {
+				bufferevent_enable(task->bev, EV_READ);
+			}
 		}
 	}
 }

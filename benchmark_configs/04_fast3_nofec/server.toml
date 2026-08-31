@@ -1,0 +1,22 @@
+# ========================================================
+# 模式 4: fast3 (无 FEC, nodelay=1, 关闭常规拥塞控制 nc=1) - 服务端配置 (server.toml)
+# ========================================================
+[global]
+syslog = true
+mon_port = 9087
+mode = "fast3"
+fec = 0
+sndwnd = 1024
+rcvwnd = 1024
+data_shard = 10
+parity_shard = 3
+pacing = 0
+loss_ctrl = 0
+sock_buf = 4194304
+
+# 单端口统一监听，支持客户端动态首包目标协商
+[[tunnel]]
+name = "ssh_tunnel"
+local_port = 9089
+remote_addr = "127.0.0.1"
+remote_port = 27334
