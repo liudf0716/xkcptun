@@ -198,6 +198,7 @@ static void parse_tunnel_table(toml_table_t *tab, struct xkcp_param *param)
 	parse_string_opt(tab, "target_addr", "targetaddr", &param->target_addr);
 	if (!param->target_addr)
 		parse_string_opt(tab, "target_host", "targethost", &param->target_addr);
+	parse_int_opt(tab, "target_port", "targetport", &param->target_port);
 	parse_int_opt(tab, "dynamic_target", "dynamictarget", &param->dynamic_target);
 
 	parse_string_opt(tab, "key", NULL, &param->key);
