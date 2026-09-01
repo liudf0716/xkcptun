@@ -189,8 +189,8 @@ int client_main_loop(void)
 	mgr.is_server = 0;
 	iqueue_init(&mgr.tunnel_list);
 
-	int num_tunnels = cfg->num_tunnels > 0 ? cfg->num_tunnels : 1;
-	struct xkcp_param *params = cfg->num_tunnels > 0 ? cfg->tunnels : &cfg->param;
+	int num_tunnels = (cfg->num_tunnels > 0 && cfg->tunnels) ? cfg->num_tunnels : 1;
+	struct xkcp_param *params = (cfg->num_tunnels > 0 && cfg->tunnels) ? cfg->tunnels : &cfg->param;
 
 	for (int i = 0; i < num_tunnels; i++) {
 		struct xkcp_param *p = &params[i];

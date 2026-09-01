@@ -3,16 +3,10 @@ syslog = false
 mon_port = 9086
 remote_addr = "172.96.252.145"
 remote_port = 9089
-mode = "fast3"
-sndwnd = 1024
-rcvwnd = 4096
-pacing = 0
-fec = 1
-data_shard = 10
-parity_shard = 3
-sock_buf = 16777216
 
 [[tunnel]]
 name = "ssh_tunnel"
 local_interface = "127.0.0.1"
 local_port = 2222
+target_addr = "127.0.0.1"
+target_port = 27334

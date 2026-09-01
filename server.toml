@@ -1,17 +1,4 @@
 [global]
 syslog = true
 mon_port = 9087
-mode = "fast3"
-sndwnd = 4096
-rcvwnd = 1024
-pacing = 0
-fec = 1
-data_shard = 10
-parity_shard = 3
-sock_buf = 16777216
-
-[[tunnel]]
-name = "ssh_tunnel"
 local_port = 9089
-remote_addr = "127.0.0.1"
-remote_port = 27334

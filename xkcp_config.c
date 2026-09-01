@@ -60,6 +60,7 @@ void xkcp_param_init(struct xkcp_param *param)
 	param->scavenge_ttl = 120;
 	param->mtu = 1350;
 	if (config.is_server) {
+		param->local_port = 9089;
 		param->sndwnd = 4096;
 		param->rcvwnd = 1024;
 	} else {
