@@ -59,21 +59,26 @@ void xkcp_param_init(struct xkcp_param *param)
 	param->auto_expire = 0;
 	param->scavenge_ttl = 120;
 	param->mtu = 1350;
-	param->sndwnd = 1024;
-	param->rcvwnd = 1024;
+	if (config.is_server) {
+		param->sndwnd = 4096;
+		param->rcvwnd = 1024;
+	} else {
+		param->sndwnd = 1024;
+		param->rcvwnd = 4096;
+	}
 	param->data_shard = 10;
 	param->parity_shard = 3;
 	param->dscp = 0;
 	param->nocomp = 0;
 	param->ack_nodelay = 0;
-	param->nodelay = 0;
-	param->interval = 20;
+	param->nodelay = 1;
+	param->interval = 10;
 	param->resend = 2;
 	param->nc = 1;
 	param->loss_ctrl = 0;
-	param->pacing = 128;
+	param->pacing = 0;
 	param->fec = 1;
-	param->sock_buf = 4194304;
+	param->sock_buf = 16777216;
 	param->keepalive = 10;
 	param->conn_timeout = 60;
 }
