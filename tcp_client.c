@@ -44,6 +44,13 @@ void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 {
 	struct xkcp_task *task = ctx;
 	struct xkcp_tunnel *tunnel = task ? task->tunnel : NULL;
+
+	if (what & BEV_EVENT_CONNECTED) {
+		xkcp_set_tcp_nodelay(bufferevent_getfd(bev));
+		xkcp_forward_data(task);
+		return;
+	}
+
 	void *puser = xkcp_tcp_event_cb(bev, what, ctx);
 	if (puser)
 		free(puser);
@@ -71,7 +78,8 @@ int xkcp_server_connect_target(struct xkcp_task *task, const char *host, uint16_
 	struct event_base *base = tunnel ? tunnel->base : NULL;
 	if (!base) return -1;
 
-	struct bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+	struct bufferevent *bev = bufferevent_socket_new(base, -1,
+		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if (!bev) {
 		debug(LOG_ERR, "bufferevent_socket_new failed [%s]", strerror(errno));
 		return -1;

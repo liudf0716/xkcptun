@@ -422,8 +422,9 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 	char buf[2048];
 	int len, nret;
 	struct evbuffer *input = bufferevent_get_input(bev);
+	int snd_que_high = (kcp->snd_wnd > 256) ? (int)kcp->snd_wnd : 256;
 
-	if (kcp->nsnd_que > XKCP_SND_QUE_HIGH) {
+	if (kcp->nsnd_que > snd_que_high) {
 		bufferevent_disable(bev, EV_READ);
 		return;
 	}
@@ -433,7 +434,7 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 		if (nret < 0)
 			debug(LOG_INFO, "ikcp_send conv [%u] failed [%d] len [%d]",
 				  kcp->conv, nret, len);
-		if (kcp->nsnd_que > XKCP_SND_QUE_HIGH) {
+		if (kcp->nsnd_que > snd_que_high) {
 			bufferevent_disable(bev, EV_READ);
 			break;
 		}
@@ -465,7 +466,7 @@ static void xkcp_bev_drain_event_cb(struct bufferevent *bev, short what, void *c
 	bufferevent_free(bev);
 }
 
-#define XKCP_TCP_OUTBUF_LIMIT	(256 * 1024)
+#define XKCP_TCP_OUTBUF_LIMIT	(4 * 1024 * 1024)
 
 void xkcp_forward_data(struct xkcp_task *task)
 {
@@ -603,7 +604,8 @@ void xkcp_update_task_list(iqueue_head *task_list)
 		if (task->kcp) {
 			ikcp_update(task->kcp, now);
 			xkcp_forward_data(task);
-			if (task->bev && task->kcp->nsnd_que < XKCP_SND_QUE_LOW &&
+			int snd_que_low = task->kcp->snd_wnd > 256 ? (int)(task->kcp->snd_wnd / 4) : XKCP_SND_QUE_LOW;
+			if (task->bev && task->kcp->nsnd_que < snd_que_low &&
 			    !(bufferevent_get_enabled(task->bev) & EV_READ)) {
 				bufferevent_enable(task->bev, EV_READ);
 			}
