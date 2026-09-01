@@ -733,33 +733,31 @@ local_port = 2222
 
         <!-- Slide 11: 总结与启示 -->
         <section class="slide" id="slide-11">
-            <div class="card" style="padding: 26px;">
-                <h2 class="slide-title">💡 10. 核心工程总结与经验启示录</h2>
-                <div class="grid-3" style="margin-top: 12px;">
-                    <div style="background:#090d13; border:1px solid #30363d; padding:14px; border-radius:8px;">
-                        <div style="font-size:22px; margin-bottom:6px;">⚡</div>
-                        <h4 style="color:var(--accent-blue); font-size:14.5px; margin-bottom:6px;">1. 热路径保持 O(1)</h4>
-                        <p style="font-size:12.5px; color:var(--text-muted);">
-                            收包热路径每秒被触发数千次，严禁执行任何重度 Flush 或哈希扫描。每一行多余的遍历在弱网高频下都会引发 CPU 饥饿与本地丢包雪崩。
+            <div class="card" style="padding: 24px;">
+                <h2 class="slide-title" style="color: #ff7b72;">💡 10. 最大血泪启示：千万别在底层性能优化时盲目相信 AI！</h2>
+                <div class="grid-2" style="margin-top: 10px;">
+                    <div style="background:#1c1214; border:1px solid #672026; padding:14px; border-radius:8px;">
+                        <h4 style="color:var(--accent-red); font-size:14.5px; margin-bottom:8px;">🤖 典型翻车 ①：直连吊打隧道时，AI 视而不见</h4>
+                        <p style="font-size:13px; color:var(--text-main); line-height:1.5;">
+                            明明给了直连远超隧道的基准数据，AI 却直接无视巨大差距，只会在破烂代码上“微调推荐参数”；直到手动要求比对旧版本 Diff，才发现是写新代码时把之前的性能优化给删了……
                         </p>
                     </div>
-                    <div style="background:#090d13; border:1px solid #30363d; padding:14px; border-radius:8px;">
-                        <div style="font-size:22px; margin-bottom:6px;">🎯</div>
-                        <h4 style="color:var(--accent-green); font-size:14.5px; margin-bottom:6px;">2. 生产级真实回归</h4>
-                        <p style="font-size:12.5px; color:var(--text-muted);">
-                            人造测试工具容易产生盲区。必须在真实跨洋长肥网络下用大文件真实压测，并始终锚定已知稳定历史版本作为唯一 Ground Truth。
-                        </p>
-                    </div>
-                    <div style="background:#090d13; border:1px solid #30363d; padding:14px; border-radius:8px;">
-                        <div style="font-size:22px; margin-bottom:6px;">⚖️</div>
-                        <h4 style="color:var(--accent-purple); font-size:14.5px; margin-bottom:6px;">3. 物理不对称与开箱即用</h4>
-                        <p style="font-size:12.5px; color:var(--text-muted);">
-                            网络参数不是越大越好。因地制宜配置非对称窗口，并将最优经验固化为源码默认值，让用户开箱即享极致加速。
+                    <div style="background:#1c1214; border:1px solid #672026; padding:14px; border-radius:8px;">
+                        <h4 style="color:var(--accent-red); font-size:14.5px; margin-bottom:8px;">🤖 典型翻车 ②：上传落后 40% 时，AI 疯狂甩锅物理瓶颈</h4>
+                        <p style="font-size:13px; color:var(--text-main); line-height:1.5;">
+                            测出隧道上传比直连差了整整 40%，AI 信誓旦旦甩锅是“物理限制、带宽瓶颈”；直到甩出 50M 真实 Speedtest 数据当面打脸，它才乖乖去看代码找出 256 断水阀与 Nagle 延迟！
                         </p>
                     </div>
                 </div>
-                <div style="text-align:center; margin-top:18px; font-size:15px; color:var(--accent-blue); font-weight:bold;">
-                    感谢收看！欢迎点赞、转发与交流高性能网络协议栈开发技术 🚀
+                <div class="highlight-box highlight-warning" style="margin-top: 14px; padding: 14px 18px; font-size: 14px;">
+                    <div>
+                        🔥 <strong>核心结论：</strong><br>
+                        AI 写业务逻辑挺快，但在严谨的底层性能调优上，幻觉和“懂王式糊弄”真的要命。<br>
+                        👉 <strong>数据必须亲手测，批判性思维永远不能丢！</strong>
+                    </div>
+                </div>
+                <div style="text-align:center; margin-top:14px; font-size:14px; color:var(--accent-blue); font-weight:bold;">
+                    感谢收看！欢迎点赞、转发并在评论区吐槽你被 AI 坑过的经历 🚀
                 </div>
             </div>
         </section>
