@@ -1,6 +1,7 @@
 [global]
 syslog = false
 mon_port = 9086
+key = "7f7ac683d720e1437019692eadb0b811"
 remote_addr = "172.96.252.145"
 remote_port = 9089
 
