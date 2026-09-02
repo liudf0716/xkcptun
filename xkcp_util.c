@@ -330,6 +330,15 @@ void xkcp_fec_tick(struct xkcp_proxy_param *ptr)
 	fec_conn_tick(ptr->fec, fec_send_pkt, &ctx);
 }
 
+void xkcp_fec_conn_tick(struct fec_conn *fec, int fd, const struct sockaddr_in *addr, struct xkcp_tunnel *tunnel)
+{
+	if (!fec || !addr)
+		return;
+
+	struct fec_send_ctx ctx = { fd, addr, tunnel };
+	fec_conn_tick(fec, fec_send_pkt, &ctx);
+}
+
 static int xkcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
 	struct xkcp_proxy_param *ptr = user;

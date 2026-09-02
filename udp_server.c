@@ -190,6 +190,8 @@ void udp_server_check_timeout(struct xkcp_tunnel *tunnel)
 			close(s->target_fd);
 			iqueue_del(&s->node);
 			free(s);
+		} else if (s->fec) {
+			xkcp_fec_conn_tick(s->fec, s->xkcpfd, &s->client_sa, s->tunnel);
 		}
 	}
 }

@@ -92,6 +92,10 @@ static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 
 	if (tunnel->param.proto && strcmp(tunnel->param.proto, "udp") == 0) {
 		udp_proxy_check_timeout(tunnel);
+		if (tunnel->client_fec) {
+			xkcp_fec_conn_tick(tunnel->client_fec, tunnel->xkcp_fd,
+					   &tunnel->client_proxy_param.sockaddr, tunnel);
+		}
 	} else {
 		xkcp_update_task_list(&tunnel->client_task_list, &tunnel->param);
 		xkcp_task_check_timeout_val(&tunnel->client_task_list, tunnel->param.conn_timeout);

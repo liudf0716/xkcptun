@@ -187,6 +187,7 @@ void xkcp_send_tunnel_packet(int fd, const struct sockaddr_in *addr, struct fec_
 
 /* periodic FEC tick for one session's peer codec (parity flush + adaptation) */
 void xkcp_fec_tick(struct xkcp_proxy_param *ptr);
+void xkcp_fec_conn_tick(struct fec_conn *fec, int fd, const struct sockaddr_in *addr, struct xkcp_tunnel *tunnel);
 
 int xkcp_main(int argc, char **argv);
 
