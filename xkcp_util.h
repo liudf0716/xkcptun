@@ -95,10 +95,14 @@ struct xkcp_tunnel {
 	struct fec_conn		*client_fec;
 	struct xkcp_proxy_param client_proxy_param;
 	iqueue_head			client_task_list;
+	int					udp_local_fd;		/* local UDP listening socket */
+	struct event		*udp_local_ev;		/* read event on local UDP socket */
+	iqueue_head			udp_client_sessions;	/* active client UDP sessions */
 
 	/* Server specific */
 	jwHashTable			*server_xkcp_hash;
 	jwHashTable			*server_fec_hash;
+	iqueue_head			udp_server_sessions;	/* active server UDP sessions */
 	IUINT32				last_cleanup;	/* last periodic cleanup tick */
 	int					(*connect_target)(struct xkcp_task *task, const char *host, uint16_t port);
 
@@ -131,12 +135,18 @@ IINT64 iclock64(void);
 
 IUINT32 iclock(void);
 
+static inline IINT32 _itimediff(IUINT32 later, IUINT32 earlier)
+{
+	return ((IINT32)(later - earlier));
+}
+
 char *get_iface_ip(const char *ifname);
 
 void add_task_tail(struct xkcp_task *task, iqueue_head *head);
 
 void del_task(struct xkcp_task *task);
 
+int get_queue_size(iqueue_head *head);
 int get_task_list_size(iqueue_head *task_list);
 
 void dump_task_list(iqueue_head *task_list, struct bufferevent *bev);
@@ -171,6 +181,9 @@ void xkcp_set_event_base(struct event_base *base);
 /* queue a UDP datagram that hit EAGAIN; drained on socket writability */
 void xkcp_enqueue_udp_at(evutil_socket_t fd, const struct sockaddr_in *sa,
 			 const char *buf, int len, struct xkcp_tunnel *tunnel);
+
+void xkcp_send_tunnel_packet(int fd, const struct sockaddr_in *addr, struct fec_conn *fec,
+			     const char *buf, int len, struct xkcp_tunnel *tunnel);
 
 /* periodic FEC tick for one session's peer codec (parity flush + adaptation) */
 void xkcp_fec_tick(struct xkcp_proxy_param *ptr);

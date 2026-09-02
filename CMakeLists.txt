@@ -87,6 +87,7 @@ set(src_xkcp_spy
 set(src_xkcp_server
 	xkcp_server.c
 	tcp_client.c
+	udp_server.c
 	debug.c
 	ikcp.c
 	jwHash.c
@@ -100,6 +101,7 @@ set(src_xkcp_server
 
 set(src_xkcp_client
 	tcp_proxy.c
+	udp_proxy.c
 	xkcp_client.c
 	xkcp_config.c
 	xkcp_util.c

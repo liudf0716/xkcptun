@@ -198,8 +198,8 @@ static uint32_t get_le32(const uint8_t *p)
 	       ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-static int auth_digest(const char *key, uint32_t conv, uint32_t ts,
-		       const char *host, uint16_t port, uint8_t out[32])
+int xkcp_auth_digest(const char *key, uint32_t conv, uint32_t ts,
+		     const char *host, uint16_t port, uint8_t out[32])
 {
 	uint8_t msg[AUTH_MSG_MAX];
 	uint8_t addr[XKCP_AUTH_ADDR_MAX];
@@ -255,7 +255,7 @@ int xkcp_auth_encode_header(char *buf, size_t buflen, const char *host,
 
 	buf[2] = XKCP_PROTO_VER_2; /* CONNECT + auth */
 
-	if (auth_digest(key, conv, now_sec, host, port, digest) < 0)
+	if (xkcp_auth_digest(key, conv, now_sec, host, port, digest) < 0)
 		return -1;
 
 	off = (size_t)n;
@@ -285,7 +285,7 @@ int xkcp_auth_verify(const char *key, uint32_t conv, const char *host,
 			return -1;
 	}
 
-	if (auth_digest(key, conv, t, host, port, digest) < 0)
+	if (xkcp_auth_digest(key, conv, t, host, port, digest) < 0)
 		return -1;
 
 	return ct_memcmp16(digest, token) ? -1 : 0;

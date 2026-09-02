@@ -47,4 +47,8 @@ int xkcp_auth_verify(const char *key, uint32_t conv, const char *host,
 		     uint16_t port, const uint8_t *ts, const uint8_t *token,
 		     uint32_t now_sec);
 
+/* Compute full 32-byte HMAC-SHA256 digest */
+int xkcp_auth_digest(const char *key, uint32_t conv, uint32_t ts,
+		     const char *host, uint16_t port, uint8_t out[32]);
+
 #endif

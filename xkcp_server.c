@@ -52,10 +52,12 @@
 #include "xkcp_util.h"
 #include "xkcp_mon.h"
 #include "tcp_client.h"
+#include "udp_server.h"
+#include "xkcp_udp.h"
 
 extern struct event_base *g_exit_base;
 
-static struct fec_conn *get_peer_fec(struct xkcp_tunnel *tunnel, const char *key)
+struct fec_conn *get_peer_fec(struct xkcp_tunnel *tunnel, const char *key)
 {
 	struct fec_conn *f = NULL;
 	int cap;
@@ -144,6 +146,8 @@ static void sweep_idle_peer_fec(struct xkcp_tunnel *tunnel)
 /* per-tunnel tick: update/keepalive/forward every session, then reap timeouts */
 static void server_tick_tunnel(struct xkcp_tunnel *tunnel)
 {
+	udp_server_check_timeout(tunnel);
+
 	jwHashTable *table = tunnel->server_xkcp_hash;
 	size_t b;
 
@@ -238,6 +242,11 @@ static void server_handle_packet(struct xkcp_tunnel *tunnel, const int xkcpfd,
 				 struct event_base *base, char *buf, int nrecv,
 				 struct sockaddr_in *from, int from_len)
 {
+	if (nrecv >= 8 && buf[0] == XKCP_UDP_MAGIC_0 && buf[1] == XKCP_UDP_MAGIC_1) {
+		udp_server_handle_packet(tunnel, xkcpfd, base, buf, nrecv, from, from_len);
+		return;
+	}
+
 	if (nrecv < 24) return;
 	IUINT32 conv = ikcp_getconv(buf);
 	if (conv == 0) return;
@@ -427,6 +436,7 @@ int server_main_loop(void)
 		tunnel->server_xkcp_hash = create_hash(1024);
 		tunnel->server_fec_hash = create_hash(1024);
 		tunnel->connect_target = xkcp_server_connect_target;
+		init_server_udp(tunnel);
 
 		tunnel->xkcp_fd = set_xkcp_listener(tunnel);
 		if (tunnel->xkcp_fd < 0) {
@@ -494,6 +504,7 @@ int server_main_loop(void)
 			close(t->xkcp_fd);
 		delete_hash(t->server_fec_hash, (void *)fec_conn_free, HASHSTRING, HASHPTR);
 		delete_hash(t->server_xkcp_hash, (void *)task_list_free, HASHSTRING, HASHPTR);
+		udp_server_cleanup(t);
 		iqueue_del(&t->node);
 		free(t);
 	}

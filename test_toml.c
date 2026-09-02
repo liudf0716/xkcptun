@@ -94,10 +94,67 @@ static void test_auth_roundtrip(void)
 	printf("test_auth_roundtrip PASSED!\n");
 }
 
+#include "xkcp_udp.h"
+
+static void test_direct_udp(void)
+{
+	char buf[512];
+	const char *key = "secret-test-key-123";
+	const char *payload = "DNS_QUERY_PAYLOAD_HERE";
+	size_t payload_len = strlen(payload);
+
+	/* 1. Request with IPv4 target */
+	int enc_len = xkcp_udp_encode_req(buf, sizeof(buf), 1001, "8.8.8.8", 53, key, payload, payload_len);
+	assert(enc_len > 0);
+
+	uint32_t session_id_out = 0;
+	char host_out[128] = {0};
+	uint16_t port_out = 0;
+	const char *dec_payload = NULL;
+	size_t dec_payload_len = 0;
+
+	int rc = xkcp_udp_decode_req(buf, enc_len, &session_id_out, host_out, sizeof(host_out),
+				     &port_out, key, &dec_payload, &dec_payload_len);
+	assert(rc == 0);
+	assert(session_id_out == 1001);
+	assert(strcmp(host_out, "8.8.8.8") == 0);
+	assert(port_out == 53);
+	assert(dec_payload_len == payload_len);
+	assert(memcmp(dec_payload, payload, payload_len) == 0);
+
+	/* 2. Decode with wrong key must fail */
+	assert(xkcp_udp_decode_req(buf, enc_len, &session_id_out, host_out, sizeof(host_out),
+				   &port_out, "wrong-key", &dec_payload, &dec_payload_len) < 0);
+
+	/* 3. Request with domain target */
+	enc_len = xkcp_udp_encode_req(buf, sizeof(buf), 1002, "dns.google", 5353, key, payload, payload_len);
+	assert(enc_len > 0);
+	rc = xkcp_udp_decode_req(buf, enc_len, &session_id_out, host_out, sizeof(host_out),
+				 &port_out, key, &dec_payload, &dec_payload_len);
+	assert(rc == 0);
+	assert(session_id_out == 1002);
+	assert(strcmp(host_out, "dns.google") == 0);
+	assert(port_out == 5353);
+
+	/* 4. Response encode and decode */
+	const char *resp_payload = "DNS_RESPONSE_ANSWER";
+	enc_len = xkcp_udp_encode_resp(buf, sizeof(buf), 1001, resp_payload, strlen(resp_payload));
+	assert(enc_len > 0);
+
+	rc = xkcp_udp_decode_resp(buf, enc_len, &session_id_out, &dec_payload, &dec_payload_len);
+	assert(rc == 0);
+	assert(session_id_out == 1001);
+	assert(dec_payload_len == strlen(resp_payload));
+	assert(memcmp(dec_payload, resp_payload, dec_payload_len) == 0);
+
+	printf("test_direct_udp PASSED!\n");
+}
+
 int main(void)
 {
 	test_proto_handshake();
 	test_auth_roundtrip();
+	test_direct_udp();
 
 	const char *test_toml = "/tmp/test_xkcp.toml";
 	FILE *fp = fopen(test_toml, "w");
@@ -129,6 +186,7 @@ int main(void)
 		"# Simplified tunnel 2 (inherits global, specifies target_addr and target_port)\n"
 		"[[tunnel]]\n"
 		"name = \"web_dyn\"\n"
+		"proto = \"udp\"\n"
 		"local_port = 8080\n"
 		"target_addr = \"192.168.1.50\"\n"
 		"target_port = 80\n"
@@ -148,6 +206,7 @@ int main(void)
 	/* Tunnel 1 check (inherited values + dynamic target) */
 	struct xkcp_param *t1 = &cfg->tunnels[0];
 	assert(strcmp(t1->name, "ssh_dyn") == 0);
+	assert(strcmp(t1->proto, "tcp") == 0);
 	assert(t1->local_port == 2222);
 	assert(strcmp(t1->remote_addr, "172.96.252.145") == 0);
 	assert(t1->remote_port == 9089);
@@ -166,6 +225,7 @@ int main(void)
 	/* Tunnel 2 check */
 	struct xkcp_param *t2 = &cfg->tunnels[1];
 	assert(strcmp(t2->name, "web_dyn") == 0);
+	assert(strcmp(t2->proto, "udp") == 0);
 	assert(t2->local_port == 8080);
 	assert(strcmp(t2->remote_addr, "172.96.252.145") == 0);
 	assert(t2->remote_port == 9089);

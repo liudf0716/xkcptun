@@ -57,11 +57,6 @@
 struct event_base *g_exit_base = NULL;
 static struct event_base *g_evbase = NULL;
 
-static inline IINT32 _itimediff(IUINT32 later, IUINT32 earlier)
-{
-	return ((IINT32)(later - earlier));
-}
-
 void itimeofday(long *sec, long *usec)
 {
 	struct timeval time;
@@ -210,7 +205,7 @@ struct xkcp_task *xkcp_find_task(IUINT32 conv, const struct sockaddr_in *peer, v
 
 struct fec_send_ctx {
 	int fd;
-	struct sockaddr_in *addr;
+	const struct sockaddr_in *addr;
 	struct xkcp_tunnel *tunnel;
 };
 
@@ -224,6 +219,25 @@ static void fec_send_pkt(void *user, const char *pkt, int len)
 		xkcp_enqueue_udp_at(ctx->fd, ctx->addr, pkt, len, ctx->tunnel);
 	else if (nret < 0)
 		debug(LOG_ERR, "fec sendto: %s", strerror(errno));
+}
+
+void xkcp_send_tunnel_packet(int fd, const struct sockaddr_in *addr, struct fec_conn *fec,
+			     const char *buf, int len, struct xkcp_tunnel *tunnel)
+{
+	if (!buf || len <= 0 || !addr) return;
+
+	if (fec) {
+		struct fec_send_ctx ctx = { fd, addr, tunnel };
+		fec_conn_encode(fec, buf, len, fec_send_pkt, &ctx);
+		return;
+	}
+
+	int nret = sendto(fd, buf, len, 0, (struct sockaddr *)addr, sizeof(*addr));
+	if (nret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+		xkcp_enqueue_udp_at(fd, addr, buf, len, tunnel);
+	} else if (nret < 0) {
+		debug(LOG_ERR, "sendto: %s", strerror(errno));
+	}
 }
 
 /* ---- UDP egress queue ------------------------------------------------ */
@@ -676,14 +690,19 @@ void set_timer_interval_ms(struct event *timeout, int interval_ms)
 	evtimer_add(timeout, &tv);
 }
 
+int get_queue_size(iqueue_head *head)
+{
+	if (!head || !head->next) return 0;
+	int count = 0;
+	iqueue_head *p;
+	for (p = head->next; p && p != head; p = p->next)
+		count++;
+	return count;
+}
+
 int get_task_list_size(iqueue_head *task_list)
 {
-	int count = 0;
-	struct xkcp_task *task;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		count++;
-	}
-	return count;
+	return get_queue_size(task_list);
 }
 
 void dump_task_list(iqueue_head *task_list, struct bufferevent *bev)

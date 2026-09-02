@@ -45,9 +45,10 @@
 #include "xkcp_util.h"
 #include "tcp_proxy.h"
 #include "xkcp_config.h"
-#include "commandline.h"
 #include "xkcp_client.h"
 #include "xkcp_mon.h"
+#include "udp_proxy.h"
+#include "xkcp_udp.h"
 #include "debug.h"
 
 extern struct event_base *g_exit_base;
@@ -55,6 +56,11 @@ extern struct event_base *g_exit_base;
 /* deliver one raw KCP packet (post-FEC-decode) to the session layer */
 static void client_handle_packet(struct xkcp_tunnel *tunnel, char *buf, int nrecv)
 {
+	if (nrecv >= 8 && buf[0] == XKCP_UDP_MAGIC_0 && buf[1] == XKCP_UDP_MAGIC_1) {
+		udp_proxy_handle_server_packet(tunnel, buf, nrecv);
+		return;
+	}
+
 	if (nrecv < 24)
 		return;
 
@@ -84,8 +90,12 @@ static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	(void)fd;
 	(void)event;
 
-	xkcp_update_task_list(&tunnel->client_task_list, &tunnel->param);
-	xkcp_task_check_timeout_val(&tunnel->client_task_list, tunnel->param.conn_timeout);
+	if (tunnel->param.proto && strcmp(tunnel->param.proto, "udp") == 0) {
+		udp_proxy_check_timeout(tunnel);
+	} else {
+		xkcp_update_task_list(&tunnel->client_task_list, &tunnel->param);
+		xkcp_task_check_timeout_val(&tunnel->client_task_list, tunnel->param.conn_timeout);
+	}
 	set_timer_interval_ms(&tunnel->timer_event, tunnel->param.interval);
 }
 
@@ -241,12 +251,22 @@ int client_main_loop(void)
 		tunnel->client_proxy_param.fec = tunnel->client_fec;
 		tunnel->client_proxy_param.tunnel = tunnel;
 
-		tunnel->listener = set_tcp_proxy_listener(base, tunnel);
-		if (!tunnel->listener) {
-			close(xkcp_fd);
-			if (tunnel->client_fec) fec_conn_free(tunnel->client_fec);
-			free(tunnel);
-			continue;
+		int is_udp = (p->proto && strcmp(p->proto, "udp") == 0);
+		if (is_udp) {
+			if (init_udp_proxy(tunnel) != 0) {
+				close(xkcp_fd);
+				if (tunnel->client_fec) fec_conn_free(tunnel->client_fec);
+				free(tunnel);
+				continue;
+			}
+		} else {
+			tunnel->listener = set_tcp_proxy_listener(base, tunnel);
+			if (!tunnel->listener) {
+				close(xkcp_fd);
+				if (tunnel->client_fec) fec_conn_free(tunnel->client_fec);
+				free(tunnel);
+				continue;
+			}
 		}
 
 		event_assign(&tunnel->timer_event, base, -1, EV_PERSIST, timer_event_cb, tunnel);
@@ -296,8 +316,11 @@ int client_main_loop(void)
 		}
 		if (t->udp_pend)
 			evbuffer_free(t->udp_pend);
-		if (t->listener)
+		if (t->param.proto && strcmp(t->param.proto, "udp") == 0) {
+			udp_proxy_cleanup(t);
+		} else if (t->listener) {
 			evconnlistener_free(t->listener);
+		}
 		if (t->xkcp_fd >= 0)
 			close(t->xkcp_fd);
 		client_task_list_free(t);

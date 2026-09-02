@@ -26,6 +26,8 @@
 
 int server_main_loop(void);
 
+struct fec_conn *get_peer_fec(struct xkcp_tunnel *tunnel, const char *key);
+
 void xkcp_server_drop_peer_fec(struct xkcp_tunnel *tunnel, const char *key);
 
 void clean_useless_client(struct xkcp_tunnel *tunnel);

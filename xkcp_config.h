@@ -34,6 +34,7 @@ struct xkcp_param {
 	char	*target_addr;	    // dynamic destination host on remote side
 	int		target_port;	    // dynamic destination port on remote side
 	int		dynamic_target;	    // 1 = enable dynamic destination first-packet header
+	char	*proto;		    // tunnel protocol: "tcp" (default) or "udp"
 
 	char	*key;			    // key
 	char	*crypt; 		    // crypt
