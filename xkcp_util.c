@@ -47,6 +47,7 @@
 #include "ikcp.h"
 #include "fec.h"
 #include "xkcp_proto.h"
+#include "xkcp_auth.h"
 #include "xkcp_util.h"
 #include "xkcp_config.h"
 #include "commandline.h"
@@ -353,16 +354,6 @@ void xkcp_set_tunnel_config_param(ikcpcb *kcp, struct xkcp_param *param)
 	}
 }
 
-void xkcp_set_config_param(ikcpcb *kcp)
-{
-	struct xkcp_proxy_param *pp = (struct xkcp_proxy_param *)kcp->user;
-	if (pp && pp->tunnel) {
-		xkcp_set_tunnel_config_param(kcp, &pp->tunnel->param);
-	} else {
-		xkcp_set_tunnel_config_param(kcp, xkcp_get_param());
-	}
-}
-
 void xkcp_set_tcp_nodelay(int fd)
 {
 	int one = 1;
@@ -389,20 +380,20 @@ void xkcp_apply_sockbuf_param(int fd, struct xkcp_param *param)
 		debug(LOG_WARNING, "setsockopt SO_SNDBUF [%d] failed: %s", bufsz, strerror(errno));
 }
 
-void xkcp_apply_sockbuf(int fd)
-{
-	xkcp_apply_sockbuf_param(fd, xkcp_get_param());
-}
-
 void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
 {
 	void *puser = NULL;
+
+	if (!task)
+		return NULL;
+
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		debug(LOG_INFO, "tcp closed conv [%u] what [%d] fd [%d]",
-			  task->kcp->conv, what, bufferevent_getfd(bev));
+			  task->conv, what, bufferevent_getfd(bev));
 		if (task->kcp) {
 			ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
-			ikcp_flush(task->kcp);
+			/* ikcp_flush alone is a no-op before the first ikcp_update */
+			ikcp_update(task->kcp, iclock());
 			puser = task->kcp->user;
 			ikcp_release(task->kcp);
 			task->kcp = NULL;
@@ -442,11 +433,41 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 	ikcp_flush(kcp);
 }
 
-void xkcp_forward_all_data(iqueue_head *task_list)
+void xkcp_update_task_list(iqueue_head *task_list, const struct xkcp_param *param)
 {
-	struct xkcp_task *task;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		xkcp_forward_data(task);
+	iqueue_head *p, *n;
+
+	/* safe iteration: xkcp_forward_data may free the current task */
+	for (p = task_list->next, n = p->next; p != task_list; p = n, n = p->next) {
+		struct xkcp_task *task = iqueue_entry(p, struct xkcp_task, head);
+		IUINT32 now = iclock();
+		int alive;
+
+		if (!task->kcp)
+			continue;
+
+		/* in-band keepalive when the session has gone quiet */
+		if (param && param->keepalive > 0) {
+			IUINT32 idle_ms = (IUINT32)param->keepalive * 1000;
+			if (_itimediff(now, task->last_active) > (IINT32)idle_ms) {
+				ikcp_send(task->kcp, XKCP_NOP_SIGNAL, XKCP_NOP_SIGNAL_LEN);
+				task->last_active = now;
+			}
+		}
+
+		ikcp_update(task->kcp, now);
+		alive = xkcp_forward_data(task);
+
+		if (alive && task->kcp)
+			xkcp_fec_tick((struct xkcp_proxy_param *)task->kcp->user);
+
+		if (alive && task->bev && task->kcp) {
+			int snd_que_low = task->kcp->snd_wnd > 256 ? (int)(task->kcp->snd_wnd / 4) : XKCP_SND_QUE_LOW;
+			if (task->kcp->nsnd_que < snd_que_low &&
+			    !(bufferevent_get_enabled(task->bev) & EV_READ)) {
+				bufferevent_enable(task->bev, EV_READ);
+			}
+		}
 	}
 }
 
@@ -468,17 +489,39 @@ static void xkcp_bev_drain_event_cb(struct bufferevent *bev, short what, void *c
 
 #define XKCP_TCP_OUTBUF_LIMIT	(4 * 1024 * 1024)
 
-void xkcp_forward_data(struct xkcp_task *task)
+/* tear a session down: notify peer, unlink and release everything.
+ * used for handshake/auth rejects where no TCP payload is pending. */
+static int forward_close_session(struct xkcp_task *task)
+{
+	del_task(task);
+	if (task->bev) {
+		bufferevent_free(task->bev);
+		task->bev = NULL;
+	}
+	if (task->kcp) {
+		ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
+		/* ikcp_flush alone is a no-op before the first ikcp_update
+		 * (kcp->updated == 0), e.g. for sessions rejected on the very
+		 * first packet; ikcp_update both marks updated and flushes */
+		ikcp_update(task->kcp, iclock());
+		void *puser = task->kcp->user;
+		ikcp_release(task->kcp);
+		task->kcp = NULL;
+		if (task->user_owned && puser)
+			free(puser);
+	}
+	free(task);
+	return 0;
+}
+
+int xkcp_forward_data(struct xkcp_task *task)
 {
 	char sbuf[OBUF_SIZE];
-	IUINT32 now = iclock();
-
-	task->last_active = now;
 
 	if (task->bev &&
 	    evbuffer_get_length(bufferevent_get_output(task->bev)) >
 	    XKCP_TCP_OUTBUF_LIMIT)
-		return;
+		return 1;
 
 	while (1) {
 		int peeksize = ikcp_peeksize(task->kcp);
@@ -503,6 +546,9 @@ void xkcp_forward_data(struct xkcp_task *task)
 			break;
 		}
 
+		/* any in-band message counts as session activity */
+		task->last_active = iclock();
+
 		if (nrecv == XKCP_CLOSE_SIGNAL_LEN &&
 			memcmp(obuf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {
 			debug(LOG_INFO, "conv [%u] received close signal, closing tcp connection", task->conv);
@@ -526,58 +572,73 @@ void xkcp_forward_data(struct xkcp_task *task)
 				ikcp_release(task->kcp);
 			}
 			free(task);
-			return;
+			return 0;
 		}
 
 		/* Server side: perform dynamic destination handshake if not done yet */
 		if (task->user_owned && !task->handshake_done) {
 			char target_host[128] = {0};
 			uint16_t target_port = 0;
-			int hdr_len = xkcp_proto_decode_header(obuf, nrecv, target_host, sizeof(target_host), &target_port);
+			uint8_t ver = 0;
+			const uint8_t *ts = NULL;
+			const uint8_t *token = NULL;
+			int hdr_len = xkcp_proto_decode_header_ex(obuf, nrecv, target_host,
+					sizeof(target_host), &target_port, &ver, &ts, &token);
 			int (*conn_fn)(struct xkcp_task *, const char *, uint16_t) =
 				task->tunnel ? task->tunnel->connect_target : NULL;
 
-			if (hdr_len > 0) {
+			if (hdr_len > 0 && ver >= XKCP_PROTO_VER_2) {
+				const char *key = (task->tunnel && task->tunnel->param.key) ?
+					task->tunnel->param.key : xkcp_get_param()->key;
+				uint32_t now_sec = (uint32_t)(iclock64() / 1000);
+
 				task->handshake_done = 1;
+				if (xkcp_auth_verify(key, task->conv, target_host, target_port,
+						     ts, token, now_sec) < 0) {
+					debug(LOG_WARNING, "[%s] conv [%u] authentication failed for target [%s]:[%u]",
+					      task->tunnel ? task->tunnel->name : "server",
+					      task->conv, target_host, target_port);
+					free(heapbuf);
+					return forward_close_session(task);
+				}
 				snprintf(task->target_host, sizeof(task->target_host), "%s", target_host);
 				task->target_port = target_port;
 				if (!conn_fn || conn_fn(task, target_host, target_port) < 0) {
 					debug(LOG_ERR, "[%s] conv [%u] connect to dynamic target [%s]:[%u] failed",
 					      task->tunnel ? task->tunnel->name : "server", task->conv, target_host, target_port);
-					ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
-					ikcp_flush(task->kcp);
-					del_task(task);
-					void *puser = task->kcp->user;
-					ikcp_release(task->kcp);
-					if (puser) free(puser);
 					free(heapbuf);
-					free(task);
-					return;
+					return forward_close_session(task);
 				}
 				if (nrecv > hdr_len && task->bev) {
 					evbuffer_add(bufferevent_get_output(task->bev), obuf + hdr_len, nrecv - hdr_len);
 				}
+			} else if (hdr_len > 0) {
+				debug(LOG_WARNING, "[%s] conv [%u] legacy unauthenticated dynamic header rejected",
+				      task->tunnel ? task->tunnel->name : "server", task->conv);
+				free(heapbuf);
+				return forward_close_session(task);
 			} else {
-				/* Fallback to static target */
+				/* Fallback to the tunnel's static backend, if any */
 				task->handshake_done = 1;
-				const char *fb_host = task->tunnel && task->tunnel->param.remote_addr && task->tunnel->param.remote_addr[0] ?
-				                      task->tunnel->param.remote_addr : "127.0.0.1";
-				uint16_t fb_port = task->tunnel && task->tunnel->param.remote_port ?
-				                   (uint16_t)task->tunnel->param.remote_port : 22;
+				const char *fb_host = task->tunnel && task->tunnel->param.remote_addr &&
+				                      task->tunnel->param.remote_addr[0] ?
+						      task->tunnel->param.remote_addr : NULL;
+				uint16_t fb_port = task->tunnel ?
+				                   (uint16_t)task->tunnel->param.remote_port : 0;
+
+				if (!fb_host || fb_port == 0) {
+					debug(LOG_WARNING, "[%s] conv [%u] no dynamic header and no static backend, dropping",
+					      task->tunnel ? task->tunnel->name : "server", task->conv);
+					free(heapbuf);
+					return forward_close_session(task);
+				}
 				snprintf(task->target_host, sizeof(task->target_host), "%s", fb_host);
 				task->target_port = fb_port;
 				if (!conn_fn || conn_fn(task, fb_host, fb_port) < 0) {
 					debug(LOG_ERR, "[%s] conv [%u] connect to fallback target [%s]:[%u] failed",
 					      task->tunnel ? task->tunnel->name : "server", task->conv, fb_host, fb_port);
-					ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
-					ikcp_flush(task->kcp);
-					del_task(task);
-					void *puser = task->kcp->user;
-					ikcp_release(task->kcp);
-					if (puser) free(puser);
 					free(heapbuf);
-					free(task);
-					return;
+					return forward_close_session(task);
 				}
 				if (task->bev) {
 					evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
@@ -588,29 +649,21 @@ void xkcp_forward_data(struct xkcp_task *task)
 			continue;
 		}
 
+		/* in-band keepalive: activity only, never forwarded to TCP */
+		if (nrecv == XKCP_NOP_SIGNAL_LEN &&
+			memcmp(obuf, XKCP_NOP_SIGNAL, XKCP_NOP_SIGNAL_LEN) == 0) {
+			free(heapbuf);
+			continue;
+		}
+
 		if (task->bev)
 			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
 
 		free(heapbuf);
 		task->last_active = iclock();
 	}
-}
 
-void xkcp_update_task_list(iqueue_head *task_list)
-{
-	struct xkcp_task *task;
-	IUINT32 now = iclock();
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp) {
-			ikcp_update(task->kcp, now);
-			xkcp_forward_data(task);
-			int snd_que_low = task->kcp->snd_wnd > 256 ? (int)(task->kcp->snd_wnd / 4) : XKCP_SND_QUE_LOW;
-			if (task->bev && task->kcp->nsnd_que < snd_que_low &&
-			    !(bufferevent_get_enabled(task->bev) & EV_READ)) {
-				bufferevent_enable(task->bev, EV_READ);
-			}
-		}
-	}
+	return 1;
 }
 
 void set_timer_interval_ms(struct event *timeout, int interval_ms)
@@ -620,38 +673,6 @@ void set_timer_interval_ms(struct event *timeout, int interval_ms)
 	tv.tv_sec = interval_ms / 1000;
 	tv.tv_usec = (interval_ms % 1000) * 1000;
 	evtimer_add(timeout, &tv);
-}
-
-void set_timer_interval(struct event *timeout)
-{
-	set_timer_interval_ms(timeout, xkcp_get_param()->interval);
-}
-
-void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list)
-{
-	xkcp_update_task_list(task_list);
-	xkcp_task_check_timeout(task_list);
-	set_timer_interval(timeout);
-}
-
-ikcpcb *get_kcp_from_conv(IUINT32 conv, iqueue_head *task_list)
-{
-	struct xkcp_task *task;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp && task->kcp->conv == conv)
-			return task->kcp;
-	}
-	return NULL;
-}
-
-struct xkcp_task *get_task_from_conv(IUINT32 conv, iqueue_head *task_list)
-{
-	struct xkcp_task *task;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp && task->kcp->conv == conv)
-			return task;
-	}
-	return NULL;
 }
 
 int get_task_list_size(iqueue_head *task_list)
@@ -709,11 +730,6 @@ void xkcp_task_check_timeout_val(iqueue_head *task_list, int timeout_sec)
 	}
 }
 
-void xkcp_task_check_timeout(iqueue_head *task_list)
-{
-	xkcp_task_check_timeout_val(task_list, xkcp_get_param()->conn_timeout);
-}
-
 static struct event *g_sigterm_ev = NULL;
 static struct event *g_sigint_ev = NULL;
 
@@ -761,7 +777,7 @@ void xkcp_cleanup_udp_queue(void)
 		g_udp_pend = NULL;
 	}
 	if (conv_hash) {
-		delete_hash(conv_hash, NULL, HASHPTR, HASHSTRING);
+		delete_hash(conv_hash, NULL, HASHSTRING, HASHPTR);
 		conv_hash = NULL;
 	}
 }

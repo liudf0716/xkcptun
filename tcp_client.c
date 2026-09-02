@@ -40,6 +40,8 @@
 #include "ikcp.h"
 #include "jwHash.h"
 
+#include <event2/dns.h>
+
 void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 {
 	struct xkcp_task *task = ctx;
@@ -47,6 +49,9 @@ void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 
 	if (what & BEV_EVENT_CONNECTED) {
 		xkcp_set_tcp_nodelay(bufferevent_getfd(bev));
+		debug(LOG_INFO, "[%s] conv [%u] connected to target [%s]:[%u]",
+		      tunnel ? tunnel->name : "server", task->conv,
+		      task->target_host, task->target_port);
 		xkcp_forward_data(task);
 		return;
 	}
@@ -65,7 +70,10 @@ void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
 {
 	struct xkcp_task *task = ctx;
 	ikcpcb *kcp = task->kcp;
+	if (!kcp)
+		return;
 	xkcp_tcp_read_cb(bev, kcp);
+	task->last_active = iclock();
 	xkcp_forward_data(task);
 }
 
@@ -76,6 +84,7 @@ int xkcp_server_connect_target(struct xkcp_task *task, const char *host, uint16_
 
 	struct xkcp_tunnel *tunnel = task->tunnel;
 	struct event_base *base = tunnel ? tunnel->base : NULL;
+	struct evdns_base *dns_base = (tunnel && tunnel->mgr) ? tunnel->mgr->dns_base : NULL;
 	if (!base) return -1;
 
 	struct bufferevent *bev = bufferevent_socket_new(base, -1,
@@ -90,24 +99,32 @@ int xkcp_server_connect_target(struct xkcp_task *task, const char *host, uint16_
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
 
 	struct sockaddr_in sin;
+	struct sockaddr_in6 sin6;
+	int ret;
+
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(port);
-	if (inet_aton(host, &sin.sin_addr)) {
-		if (bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-			bufferevent_free(bev);
-			task->bev = NULL;
-			debug(LOG_ERR, "bufferevent_socket_connect failed to %s:%u [%s]", host, port, strerror(errno));
-			return -1;
-		}
-	} else if (bufferevent_socket_connect_hostname(bev, NULL, AF_INET, host, port) < 0) {
+	memset(&sin6, 0, sizeof(sin6));
+	sin6.sin6_family = AF_INET6;
+	sin6.sin6_port = htons(port);
+
+	if (inet_pton(AF_INET, host, &sin.sin_addr) == 1) {
+		ret = bufferevent_socket_connect(bev, (struct sockaddr *)&sin, sizeof(sin));
+	} else if (inet_pton(AF_INET6, host, &sin6.sin6_addr) == 1) {
+		ret = bufferevent_socket_connect(bev, (struct sockaddr *)&sin6, sizeof(sin6));
+	} else {
+		ret = bufferevent_socket_connect_hostname(bev, dns_base, AF_UNSPEC, host, port);
+	}
+
+	if (ret < 0) {
 		bufferevent_free(bev);
 		task->bev = NULL;
-		debug(LOG_ERR, "bufferevent_socket_connect_hostname failed to %s:%u [%s]", host, port, strerror(errno));
+		debug(LOG_ERR, "connect to target %s:%u failed", host, port);
 		return -1;
 	}
 
-	debug(LOG_INFO, "[%s] conv [%u] connected to target [%s]:[%u]",
+	debug(LOG_INFO, "[%s] conv [%u] connecting to target [%s]:[%u]",
 	      tunnel ? tunnel->name : "server", task->conv, host, port);
 	return 0;
 }

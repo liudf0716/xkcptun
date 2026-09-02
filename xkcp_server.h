@@ -26,8 +26,6 @@
 
 int server_main_loop(void);
 
-struct jwHashTable * get_xkcp_hash(void);
-
 void xkcp_server_drop_peer_fec(struct xkcp_tunnel *tunnel, const char *key);
 
 void clean_useless_client(struct xkcp_tunnel *tunnel);

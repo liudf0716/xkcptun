@@ -92,6 +92,7 @@ set(src_xkcp_server
 	jwHash.c
 	commandline.c
 	xkcp_util.c
+	xkcp_auth.c
 	xkcp_config.c
 	toml.c
 	xkcp_mon.c
@@ -102,6 +103,7 @@ set(src_xkcp_client
 	xkcp_client.c
 	xkcp_config.c
 	xkcp_util.c
+	xkcp_auth.c
 	commandline.c
 	debug.c
 	ikcp.c
@@ -123,7 +125,7 @@ target_link_libraries(xkcp_spy ${link_flag} ${libs})
 add_executable(test_fec test_fec.c fec.c)
 add_test(NAME fec COMMAND test_fec)
 
-add_executable(test_toml test_toml.c xkcp_config.c toml.c debug.c)
+add_executable(test_toml test_toml.c xkcp_config.c xkcp_auth.c toml.c debug.c)
 add_test(NAME toml COMMAND test_toml)
 
 enable_testing()

@@ -34,6 +34,7 @@
 
 #include "xkcp_util.h"
 #include "xkcp_proto.h"
+#include "xkcp_auth.h"
 #include "tcp_proxy.h"
 #include "xkcp_client.h"
 #include "debug.h"
@@ -59,10 +60,13 @@ static uint32_t gen_conv_id(void *tunnel)
 }
 
 static void
-tcp_proxy_read_cb(struct bufferevent *bev, void *ctx) 
+tcp_proxy_read_cb(struct bufferevent *bev, void *ctx)
 {
 	struct xkcp_task *task = ctx;
+	if (!task || !task->kcp)
+		return;
 	xkcp_tcp_read_cb(bev, task->kcp);
+	task->last_active = iclock();
 	xkcp_forward_data(task);
 }
 
@@ -81,23 +85,42 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct bufferevent *b_in = NULL;
 	struct event_base *base = evconnlistener_get_base(listener);
 
+	if (!tunnel) {
+		/* no tunnel context: cannot route this connection anywhere */
+		debug(LOG_ERR, "accept without tunnel context, closing fd [%d]", fd);
+		evutil_closesocket(fd);
+		return;
+	}
+
 	xkcp_set_tcp_nodelay(fd);
 	b_in = bufferevent_socket_new(base, fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
-	assert(b_in);
-	
+	if (!b_in) {
+		debug(LOG_ERR, "[%s] bufferevent_socket_new failed, closing fd [%d]",
+		      tunnel->name, fd);
+		evutil_closesocket(fd);
+		return;
+	}
+
 	IUINT32 conv = gen_conv_id(tunnel);
-	ikcpcb *kcp_client = ikcp_create(conv, param);
-	if (tunnel)
-		xkcp_set_tunnel_config_param(kcp_client, &tunnel->param);
-	else
-		xkcp_set_config_param(kcp_client);
+	ikcpcb *kcp_client = ikcp_create(conv, p);
+	if (!kcp_client) {
+		debug(LOG_ERR, "[%s] ikcp_create failed, closing fd [%d]", tunnel->name, fd);
+		bufferevent_free(b_in);
+		return;
+	}
+	xkcp_set_tunnel_config_param(kcp_client, &tunnel->param);
 
 	debug(LOG_INFO, "[%s] accept new client [%d] in, conv [%u]",
-	      tunnel ? tunnel->name : "default", fd, conv);
+	      tunnel->name, fd, conv);
 
 	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
-	assert(task);
+	if (!task) {
+		debug(LOG_ERR, "[%s] alloc task failed, closing fd [%d]", tunnel->name, fd);
+		ikcp_release(kcp_client);
+		bufferevent_free(b_in);
+		return;
+	}
 	task->kcp = kcp_client;
 	task->bev = b_in;
 	task->sockaddr = &p->sockaddr;
@@ -109,19 +132,23 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	task->target_host[0] = '\0';
 	task->target_port = 0;
 
-	if (tunnel && (tunnel->param.dynamic_target || tunnel->param.target_port > 0)) {
+	if (tunnel->param.dynamic_target || tunnel->param.target_port > 0) {
 		char hdr_buf[XKCP_MAX_HDR_LEN];
 		const char *thost = tunnel->param.target_addr ? tunnel->param.target_addr : "127.0.0.1";
 		uint16_t tport = (uint16_t)tunnel->param.target_port;
-		int hlen = xkcp_proto_encode_header(hdr_buf, sizeof(hdr_buf), thost, tport);
+		int hlen = xkcp_auth_encode_header(hdr_buf, sizeof(hdr_buf), thost, tport,
+						   tunnel->param.key, conv, (uint32_t)time(NULL));
 		if (hlen > 0) {
 			ikcp_send(kcp_client, hdr_buf, hlen);
-			debug(LOG_INFO, "[%s] conv [%u] sent dynamic target header [%s]:[%u]",
+			debug(LOG_INFO, "[%s] conv [%u] sent authenticated dynamic target header [%s]:[%u]",
+			      tunnel->name, conv, thost, tport);
+		} else {
+			debug(LOG_ERR, "[%s] conv [%u] encode dynamic target header [%s]:[%u] failed",
 			      tunnel->name, conv, thost, tport);
 		}
 	}
 
-	add_task_tail(task, tunnel ? &tunnel->client_task_list : NULL);
+	add_task_tail(task, &tunnel->client_task_list);
 
 	bufferevent_setcb(b_in, tcp_proxy_read_cb, NULL, tcp_proxy_event_cb, task);
 	bufferevent_enable(b_in,  EV_READ | EV_WRITE );

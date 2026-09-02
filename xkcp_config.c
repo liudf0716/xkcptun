@@ -52,7 +52,7 @@ void xkcp_param_init(struct xkcp_param *param)
 	param->target_addr = NULL;
 	param->target_port = 0;
 	param->dynamic_target = 0;
-	param->key = strdup("it's a secrect");
+	param->key = strdup("it's a secret");
 	param->crypt = strdup("none");
 	param->mode = strdup("fast3");
 	param->conn = 1;
@@ -199,7 +199,21 @@ static void parse_tunnel_table(toml_table_t *tab, struct xkcp_param *param)
 	if (!param->target_addr)
 		parse_string_opt(tab, "target_host", "targethost", &param->target_addr);
 	parse_int_opt(tab, "target_port", "targetport", &param->target_port);
+	{
+		/* dynamic_target defaults to on whenever a target port is set,
+		 * unless the operator explicitly disabled it */
+		toml_datum_t dt = toml_int_in(tab, "dynamic_target");
+		if (!dt.ok) dt = toml_int_in(tab, "dynamictarget");
+		if (!dt.ok) dt = toml_bool_in(tab, "dynamic_target");
+		if (!dt.ok) dt = toml_bool_in(tab, "dynamictarget");
+		if (!dt.ok)
+			param->dynamic_target = param->target_port > 0 ? 1 : 0;
+	}
 	parse_int_opt(tab, "dynamic_target", "dynamictarget", &param->dynamic_target);
+
+	/* target-only tunnels target the server's own loopback (classic usage) */
+	if (!param->target_addr && param->target_port > 0)
+		param->target_addr = strdup("127.0.0.1");
 
 	parse_string_opt(tab, "key", NULL, &param->key);
 	parse_string_opt(tab, "crypt", NULL, &param->crypt);

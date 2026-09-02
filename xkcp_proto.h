@@ -28,7 +28,8 @@
 
 #define XKCP_PROTO_MAGIC_0      0x58 /* 'X' */
 #define XKCP_PROTO_MAGIC_1      0x4B /* 'K' */
-#define XKCP_PROTO_VER_1        0x01
+#define XKCP_PROTO_VER_1        0x01 /* CONNECT, no authentication */
+#define XKCP_PROTO_VER_2        0x02 /* CONNECT + ts(4) + auth token(16) */
 
 #define XKCP_CMD_CONNECT        0x01
 
@@ -36,7 +37,12 @@
 #define XKCP_ATYPE_DOMAIN       0x03
 #define XKCP_ATYPE_IPV6         0x04
 
-/* Maximum header length: 2(magic) + 1(ver) + 1(cmd) + 1(atype) + 1(len) + 255(domain) + 2(port) = 263 bytes */
+#define XKCP_AUTH_TS_LEN        4
+#define XKCP_AUTH_TOKEN_LEN     16
+/* 4 (IPv4) / 16 (IPv6) / 1 + 255 (domain) */
+#define XKCP_AUTH_ADDR_MAX      256
+
+/* Maximum header length: 5(prefix) + 263(addr+port) + 4(ts) + 16(token) */
 #define XKCP_MAX_HDR_LEN        300
 
 #pragma pack(push, 1)
@@ -47,6 +53,42 @@ struct xkcp_hdr_prefix {
 	uint8_t atype;     /* 0x01 = IPv4, 0x03 = Domain, 0x04 = IPv6 */
 };
 #pragma pack(pop)
+
+/*
+ * Serialize host into wire address bytes (same layout as the header body).
+ * Returns the byte count, or < 0 if host is not a valid address/domain.
+ */
+static inline int xkcp_proto_serialize_addr(const char *host, uint8_t *out,
+					    size_t outlen, uint8_t *atype_out)
+{
+	struct in_addr in4;
+	struct in6_addr in6;
+	size_t hlen;
+
+	if (!host || !out || !atype_out)
+		return -1;
+
+	if (inet_pton(AF_INET, host, &in4) == 1) {
+		if (outlen < 4) return -1;
+		*atype_out = XKCP_ATYPE_IPV4;
+		memcpy(out, &in4.s_addr, 4);
+		return 4;
+	}
+	if (inet_pton(AF_INET6, host, &in6) == 1) {
+		if (outlen < 16) return -1;
+		*atype_out = XKCP_ATYPE_IPV6;
+		memcpy(out, &in6.s6_addr, 16);
+		return 16;
+	}
+
+	hlen = strlen(host);
+	if (hlen == 0 || hlen > 255 || outlen < 1 + hlen)
+		return -1;
+	*atype_out = XKCP_ATYPE_DOMAIN;
+	out[0] = (uint8_t)hlen;
+	memcpy(out + 1, host, hlen);
+	return (int)(1 + hlen);
+}
 
 /*
  * Encode dynamic destination header.
@@ -97,13 +139,18 @@ static inline int xkcp_proto_encode_header(char *buf, size_t buflen, const char 
 
 /*
  * Decode dynamic destination header.
- * On success, fills host_out and port_out, and returns number of consumed header bytes.
- * If data is not a valid dynamic header (e.g. raw payload from legacy client), returns 0.
- * If data is incomplete header, returns -1 (need more data).
+ * On success, fills host_out and port_out, sets ver_out to the header
+ * version and, for v2, ts_out and token_out to the timestamp and HMAC token
+ * carried after the port. Returns the number of consumed header bytes
+ * (including ts+token for v2).
+ * If data is not a valid dynamic header (e.g. raw payload from legacy
+ * client), returns 0. If the header is incomplete, returns -1.
  */
-static inline int xkcp_proto_decode_header(const char *buf, size_t buflen,
-					   char *host_out, size_t host_out_len,
-					   uint16_t *port_out)
+static inline int xkcp_proto_decode_header_ex(const char *buf, size_t buflen,
+					      char *host_out, size_t host_out_len,
+					      uint16_t *port_out, uint8_t *ver_out,
+					      const uint8_t **ts_out,
+					      const uint8_t **token_out)
 {
 	if (!buf || buflen < sizeof(struct xkcp_hdr_prefix))
 		return 0;
@@ -111,10 +158,14 @@ static inline int xkcp_proto_decode_header(const char *buf, size_t buflen,
 	const struct xkcp_hdr_prefix *hdr = (const struct xkcp_hdr_prefix *)buf;
 	if (hdr->magic[0] != XKCP_PROTO_MAGIC_0 ||
 	    hdr->magic[1] != XKCP_PROTO_MAGIC_1 ||
-	    hdr->ver != XKCP_PROTO_VER_1 ||
+	    (hdr->ver != XKCP_PROTO_VER_1 && hdr->ver != XKCP_PROTO_VER_2) ||
 	    hdr->cmd != XKCP_CMD_CONNECT) {
 		return 0; /* Not a dynamic destination header */
 	}
+
+	if (ver_out) *ver_out = hdr->ver;
+	if (ts_out) *ts_out = NULL;
+	if (token_out) *token_out = NULL;
 
 	size_t offset = sizeof(struct xkcp_hdr_prefix);
 
@@ -160,7 +211,27 @@ static inline int xkcp_proto_decode_header(const char *buf, size_t buflen,
 	if (port_out)
 		*port_out = ntohs(nport);
 
+	if (hdr->ver == XKCP_PROTO_VER_2) {
+		if (buflen < offset + XKCP_AUTH_TS_LEN + XKCP_AUTH_TOKEN_LEN)
+			return -1; /* Incomplete */
+		if (ts_out)
+			*ts_out = (const uint8_t *)buf + offset;
+		if (token_out)
+			*token_out = (const uint8_t *)buf + offset + XKCP_AUTH_TS_LEN;
+		offset += XKCP_AUTH_TS_LEN + XKCP_AUTH_TOKEN_LEN;
+	}
+
 	return (int)offset;
+}
+
+/* Backward-compatible wrapper: version-insensitive decode. */
+static inline int xkcp_proto_decode_header(const char *buf, size_t buflen,
+					   char *host_out, size_t host_out_len,
+					   uint16_t *port_out)
+{
+	uint8_t ver;
+	return xkcp_proto_decode_header_ex(buf, buflen, host_out, host_out_len,
+					   port_out, &ver, NULL, NULL);
 }
 
 #endif /* _XKCP_PROTO_H_ */

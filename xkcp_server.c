@@ -40,6 +40,7 @@
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
 #include <event2/listener.h>
+#include <event2/dns.h>
 #include <event2/util.h>
 
 #include "ikcp.h"
@@ -140,12 +141,22 @@ static void sweep_idle_peer_fec(struct xkcp_tunnel *tunnel)
 	}
 }
 
-static void server_tick_task_list(iqueue_head *task_list)
+/* per-tunnel tick: update/keepalive/forward every session, then reap timeouts */
+static void server_tick_tunnel(struct xkcp_tunnel *tunnel)
 {
-	struct xkcp_task *task;
-	iqueue_foreach(task, task_list, xkcp_task_type, head) {
-		if (task->kcp)
-			xkcp_fec_tick((struct xkcp_proxy_param *)task->kcp->user);
+	jwHashTable *table = tunnel->server_xkcp_hash;
+	size_t b;
+
+	for (b = 0; b < table->buckets; b++) {
+		jwHashEntry *e;
+		for (e = table->bucket[b]; e; e = e->next)
+			xkcp_update_task_list((iqueue_head *)e->value.ptrValue, &tunnel->param);
+	}
+	for (b = 0; b < table->buckets; b++) {
+		jwHashEntry *e;
+		for (e = table->bucket[b]; e; e = e->next)
+			xkcp_task_check_timeout_val((iqueue_head *)e->value.ptrValue,
+						    tunnel->param.conn_timeout);
 	}
 }
 
@@ -157,18 +168,14 @@ static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	(void)fd;
 	(void)event;
 
-	IUINT32 now = iclock();
-	static IUINT32 last_cleanup = 0;
-
 	if (tunnel->server_xkcp_hash) {
-		hash_iterator(tunnel->server_xkcp_hash, (void*)xkcp_update_task_list, HASHPTR);
-		if ((IINT32)(now - last_cleanup) >= 1000) {
-			hash_iterator(tunnel->server_xkcp_hash, (void*)xkcp_task_check_timeout, HASHPTR);
+		server_tick_tunnel(tunnel);
+		IUINT32 now = iclock();
+		if ((IINT32)(now - tunnel->last_cleanup) >= 1000) {
 			clean_useless_client(tunnel);
 			sweep_idle_peer_fec(tunnel);
-			last_cleanup = now;
+			tunnel->last_cleanup = now;
 		}
-		hash_iterator(tunnel->server_xkcp_hash, (void*)server_tick_task_list, HASHPTR);
 	}
 
 	set_timer_interval_ms(&tunnel->timer_event, tunnel->param.interval);
@@ -180,7 +187,10 @@ static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, c
 {
 	(void)base;
 	struct xkcp_proxy_param *param = malloc(sizeof(struct xkcp_proxy_param));
-	assert(param);
+	if (!param) {
+		debug(LOG_ERR, "[%s] alloc session param for conv [%u] failed", tunnel->name, conv);
+		return NULL;
+	}
 	memset(param, 0, sizeof(struct xkcp_proxy_param));
 	memcpy(&param->sockaddr, from, from_len);
 	param->xkcpfd = xkcpfd;
@@ -188,6 +198,11 @@ static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, c
 	param->tunnel = tunnel;
 
 	ikcpcb *kcp_server = ikcp_create(conv, param);
+	if (!kcp_server) {
+		debug(LOG_ERR, "[%s] ikcp_create for conv [%u] failed", tunnel->name, conv);
+		free(param);
+		return NULL;
+	}
 	xkcp_set_tunnel_config_param(kcp_server, &tunnel->param);
 
 	if (tunnel->param.fec) {
@@ -198,8 +213,13 @@ static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, c
 	}
 
 	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
-	assert(task);
-	task->kcp = kcp_server;		
+	if (!task) {
+		debug(LOG_ERR, "[%s] alloc task for conv [%u] failed", tunnel->name, conv);
+		ikcp_release(kcp_server);
+		free(param);
+		return NULL;
+	}
+	task->kcp = kcp_server;
 	task->bev = NULL;
 	task->sockaddr = &param->sockaddr;
 	task->last_active = iclock();
@@ -412,8 +432,8 @@ int server_main_loop(void)
 
 		tunnel->xkcp_fd = set_xkcp_listener(tunnel);
 		if (tunnel->xkcp_fd < 0) {
-			delete_hash(tunnel->server_fec_hash, (void *)fec_conn_free, HASHPTR, HASHSTRING);
-			delete_hash(tunnel->server_xkcp_hash, (void *)task_list_free, HASHPTR, HASHSTRING);
+			delete_hash(tunnel->server_fec_hash, (void *)fec_conn_free, HASHSTRING, HASHPTR);
+			delete_hash(tunnel->server_xkcp_hash, (void *)task_list_free, HASHSTRING, HASHPTR);
 			free(tunnel);
 			continue;
 		}
@@ -439,6 +459,10 @@ int server_main_loop(void)
 	short mport = cfg->mon_port > 0 ? (short)cfg->mon_port : 9087;
 	mgr.mon_listener = set_xkcp_mon_listener(base, mport, &mgr);
 
+	mgr.dns_base = evdns_base_new(base, 1);
+	if (!mgr.dns_base)
+		debug(LOG_WARNING, "evdns_base_new failed, domain targets resolve synchronously");
+
 	xkcp_setup_signals(base);
 
 	debug(LOG_INFO, "xkcptun server started with %d active tunnel(s), mon_port %d",
@@ -451,6 +475,8 @@ int server_main_loop(void)
 	xkcp_cleanup_udp_queue();
 	if (mgr.mon_listener)
 		evconnlistener_free(mgr.mon_listener);
+	if (mgr.dns_base)
+		evdns_base_free(mgr.dns_base, 0);
 
 	iqueue_head *p, *n;
 	for (p = mgr.tunnel_list.next, n = p->next; p != &mgr.tunnel_list; p = n, n = p->next) {

@@ -44,9 +44,15 @@
 #define XKCP_CLOSE_SIGNAL	"\xff\xff\xff\xff"
 #define XKCP_CLOSE_SIGNAL_LEN	4
 
+/* in-band keepalive: skipped by both endpoints, never forwarded to TCP.
+ * a 4-byte all-zero message from a real peer stream is dropped by design. */
+#define XKCP_NOP_SIGNAL		"\x00\x00\x00\x00"
+#define XKCP_NOP_SIGNAL_LEN	4
+
 struct fec_conn;
 struct xkcp_tunnel;
 struct xkcp_manager;
+struct evdns_base;
 
 struct xkcp_proxy_param {
 	struct event_base 	*base;
@@ -92,6 +98,7 @@ struct xkcp_tunnel {
 	/* Server specific */
 	jwHashTable			*server_xkcp_hash;
 	jwHashTable			*server_fec_hash;
+	IUINT32				last_cleanup;	/* last periodic cleanup tick */
 	int					(*connect_target)(struct xkcp_task *task, const char *host, uint16_t port);
 
 	/* Egress UDP backpressure queue */
@@ -110,10 +117,11 @@ struct xkcp_tunnel {
 /* Unified Master Manager */
 struct xkcp_manager {
 	struct event_base	*base;
-	iqueue_head			tunnel_list;
-	int					num_tunnels;
+	iqueue_head		tunnel_list;
+	int			num_tunnels;
 	struct evconnlistener *mon_listener;
-	int					is_server;
+	struct evdns_base	*dns_base;	/* async resolver (server) */
+	int			is_server;
 };
 
 void itimeofday(long *sec, long *usec);
@@ -121,8 +129,6 @@ void itimeofday(long *sec, long *usec);
 IINT64 iclock64(void);
 
 IUINT32 iclock(void);
-
-int get_task_list_count(void);
 
 char *get_iface_ip(const char *ifname);
 
@@ -136,40 +142,28 @@ void dump_task_list(iqueue_head *task_list, struct bufferevent *bev);
 
 void xkcp_set_tunnel_config_param(ikcpcb *kcp, struct xkcp_param *param);
 
-void xkcp_set_config_param(ikcpcb *kcp);
-
 void xkcp_set_tcp_nodelay(int fd);
 
 void xkcp_apply_sockbuf_param(int fd, struct xkcp_param *param);
 
-void xkcp_apply_sockbuf(int fd);
-
+/* event callback on TCP EOF/error; returns the kcp user pointer when the
+ * caller owns it (server sessions) so it can be freed */
 void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task);
 
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp);
 
-void xkcp_forward_all_data(iqueue_head *task_list);
+/* pump KCP -> TCP for one task; returns 0 if the task was freed */
+int xkcp_forward_data(struct xkcp_task *task);
 
-void xkcp_forward_data(struct xkcp_task *task);
-
-void xkcp_update_task_list(iqueue_head *task_list);
-
-void set_timer_interval(struct event *timeout);
+/* tick all sessions in a task list: kcp_update + forward + idle keepalive */
+void xkcp_update_task_list(iqueue_head *task_list, const struct xkcp_param *param);
 
 void set_timer_interval_ms(struct event *timeout, int interval_ms);
 
-void xkcp_timer_event_cb(struct event *timeout, iqueue_head *task_list);
-
-ikcpcb *get_kcp_from_conv(IUINT32 conv, iqueue_head *task_list);
-
-struct xkcp_task *get_task_from_conv(IUINT32 conv, iqueue_head *task_list);
+void xkcp_task_check_timeout_val(iqueue_head *task_list, int timeout_sec);
 
 /* O(1) conv -> task lookup backed by a scoped hash */
 struct xkcp_task *xkcp_find_task(IUINT32 conv, const struct sockaddr_in *peer, void *tunnel);
-
-void xkcp_task_check_timeout(iqueue_head *task_list);
-
-void xkcp_task_check_timeout_val(iqueue_head *task_list, int timeout_sec);
 
 void xkcp_set_event_base(struct event_base *base);
 
@@ -180,11 +174,6 @@ void xkcp_enqueue_udp_at(evutil_socket_t fd, const struct sockaddr_in *sa,
 /* periodic FEC tick for one session's peer codec (parity flush + adaptation) */
 void xkcp_fec_tick(struct xkcp_proxy_param *ptr);
 
-void xkcp_tunnel_init(struct xkcp_tunnel *tunnel, struct xkcp_param *param,
-		      struct xkcp_manager *mgr);
-
-void xkcp_tunnel_free(struct xkcp_tunnel *tunnel);
-
 int xkcp_main(int argc, char **argv);
 
 void xkcp_setup_signals(struct event_base *base);
@@ -192,7 +181,5 @@ void xkcp_setup_signals(struct event_base *base);
 void xkcp_cleanup_signals(void);
 
 void xkcp_cleanup_udp_queue(void);
-
-struct evconnlistener *xkcp_create_listener(struct event_base *base, short port, void *ptr);
 
 #endif

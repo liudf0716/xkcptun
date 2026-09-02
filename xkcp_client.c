@@ -55,6 +55,9 @@ extern struct event_base *g_exit_base;
 /* deliver one raw KCP packet (post-FEC-decode) to the session layer */
 static void client_handle_packet(struct xkcp_tunnel *tunnel, char *buf, int nrecv)
 {
+	if (nrecv < 24)
+		return;
+
 	IUINT32 conv = ikcp_getconv(buf);
 	struct xkcp_task *task = xkcp_find_task(conv, NULL, tunnel);
 	if (!task || !task->kcp)
@@ -81,13 +84,9 @@ static void timer_event_cb(evutil_socket_t fd, short event, void *arg)
 	(void)fd;
 	(void)event;
 
-	xkcp_update_task_list(&tunnel->client_task_list);
+	xkcp_update_task_list(&tunnel->client_task_list, &tunnel->param);
 	xkcp_task_check_timeout_val(&tunnel->client_task_list, tunnel->param.conn_timeout);
 	set_timer_interval_ms(&tunnel->timer_event, tunnel->param.interval);
-
-	if (tunnel->client_fec) {
-		xkcp_fec_tick(&tunnel->client_proxy_param);
-	}
 }
 
 static void xkcp_rcv_cb(const int sock, short int which, void *arg)

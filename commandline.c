@@ -71,20 +71,21 @@ usage(const char *appname)
 	fprintf(stdout, "Usage: %s [options]\n", appname);
 	fprintf(stdout, "\n");
 	fprintf(stdout, "options:\n");
-	fprintf(stdout, "  -c <filename>     Use this config file\n");
+	fprintf(stdout, "  -c <filename>     Use this config file (TOML)\n");
 	fprintf(stdout, "  -f                Run in foreground\n");
 	fprintf(stdout, "  -h --help         Print usage\n");
 	fprintf(stdout, "  -v --version      Print version information\n");
 	fprintf(stdout, "  -d <level>        Debug level\n");
 	fprintf(stdout, "  --syslog          Log to syslog\n\n");
 
-	fprintf(stdout, "  -i <interface>    Interface to use (default br-lan)\n");
-	fprintf(stdout, "  -l <port>         Port number of your local server (default: 9088)\n");
-	fprintf(stdout, "  -s <host>         Host name or IP address of your remote server \n");
+	fprintf(stdout, "  -i <interface>    Interface to use (default: any/0.0.0.0)\n");
+	fprintf(stdout, "  -l <port>         Port number of your local server (default: 9089 server / 0 client)\n");
+	fprintf(stdout, "  -s <host>         Host name or IP address of your remote server\n");
 	fprintf(stdout, "  -p <port>         Port number of your remote server (default: 9089)\n");
-	fprintf(stdout, "  -k <string>       Pre-shared secret between client and server\n");
-	fprintf(stdout, "  -e <string>       Encrypt method: none\n");
-	fprintf(stdout, "  -m <string>       Profiles: fast3, fast2, fast, normal (default: \"fast\")\n");
+	fprintf(stdout, "  -k <string>       Pre-shared key for tunnel authentication\n");
+	fprintf(stdout, "                    (must match on client and server; default: \"it's a secret\")\n");
+	fprintf(stdout, "  -e <string>       (reserved, not implemented)\n");
+	fprintf(stdout, "  -m <string>       Profiles: fast3, fast2, fast, normal (default: \"fast3\")\n");
 	fprintf(stdout, "  -M --mtu <num>    MTU of your network interface\n");
 	fprintf(stdout, "  -S --sndwnd <num> Send window size(num of packets) (default: 512)\n");
 	fprintf(stdout, "  -R --rcvwnd <num> Receive window size(num of packets) (default: 512)\n");
@@ -109,9 +110,26 @@ parse_commandline(int argc, char **argv)
 	int c;
 	struct xkcp_config *config = xkcp_get_config();
 	struct xkcp_param *param = &config->param;
+	const char *optstring = "Ac:D:d:e:fhi:K:k:L:l:M:m:NP:p:R:S:s:T:v";
 
-	while (-1 != (c = getopt_long(argc, argv, "Ac:D:d:e:fhi:K:k:L:l:M:m:NP:p:R:S:s:T:v",
-									long_options, NULL)))
+	/* Pre-pass: load the config file first so command-line options,
+	 * parsed below, take precedence over values from the file. */
+	optind = 1;
+	while (-1 != (c = getopt_long(argc, argv, optstring, long_options, NULL)))
+		if (c == 'c' && optarg) {
+			free(config->config_file);
+			config->config_file = strdup(optarg);
+		}
+
+	if (config->config_file &&
+	    xkcp_parse_param(config->config_file) != 0) {
+		debug(LOG_ERR, "xkcp_parse_param failed \n");
+		usage(argv[0]);
+		exit(1);
+	}
+
+	optind = 1;
+	while (-1 != (c = getopt_long(argc, argv, optstring, long_options, NULL)))
 		switch (c) {
 
 		case GETOPT_VAL_HELP:
@@ -240,15 +258,10 @@ parse_commandline(int argc, char **argv)
 			break;
 		}
 
-	if (NULL != config->config_file)
-		if (xkcp_parse_param(config->config_file)) {
-			debug(LOG_ERR, "xkcp_parse_param failed \n");
-			usage(argv[0]);
-			exit(0);
-		}
-
-	if (!param->remote_addr) {
+	/* Client needs a server address; the pure dynamic gateway server does not. */
+	if (!config->is_server &&
+	    (!param->remote_addr || param->remote_addr[0] == '\0')) {
 		usage(argv[0]);
-		exit(0);
+		exit(1);
 	}
 }

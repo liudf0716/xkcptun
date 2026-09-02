@@ -2,9 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 
 #include "xkcp_config.h"
 #include "xkcp_proto.h"
+#include "xkcp_auth.h"
 
 static void test_proto_handshake(void)
 {
@@ -36,9 +38,59 @@ static void test_proto_handshake(void)
 	printf("test_proto_handshake PASSED!\n");
 }
 
+static void test_auth_roundtrip(void)
+{
+	char buf[XKCP_MAX_HDR_LEN];
+	char host_out[128];
+	uint16_t port_out = 0;
+	uint8_t ver = 0;
+	const uint8_t *ts = NULL;
+	const uint8_t *token = NULL;
+	uint32_t now = (uint32_t)time(NULL);
+
+	/* v2 header round-trip: encode -> decode -> verify */
+	int len = xkcp_auth_encode_header(buf, sizeof(buf), "127.0.0.1", 22,
+					   "secret-key", 12345, now);
+	assert(len > 0);
+	int parsed = xkcp_proto_decode_header_ex(buf, len, host_out, sizeof(host_out),
+						 &port_out, &ver, &ts, &token);
+	assert(parsed == len);
+	assert(ver == XKCP_PROTO_VER_2);
+	assert(strcmp(host_out, "127.0.0.1") == 0 && port_out == 22);
+	assert(ts != NULL && token != NULL);
+	assert(xkcp_auth_verify("secret-key", 12345, host_out, port_out, ts, token, now) == 0);
+
+	/* negative cases */
+	assert(xkcp_auth_verify("wrong-key", 12345, host_out, port_out, ts, token, now) < 0);
+	assert(xkcp_auth_verify("secret-key", 999, host_out, port_out, ts, token, now) < 0);
+	assert(xkcp_auth_verify("secret-key", 12345, "10.0.0.1", port_out, ts, token, now) < 0);
+	assert(xkcp_auth_verify("secret-key", 12345, host_out, 23, ts, token, now) < 0);
+	assert(xkcp_auth_verify("secret-key", 12345, host_out, port_out, ts, token,
+				now + XKCP_AUTH_WINDOW_SEC + 10) < 0);
+
+	/* domain target + verify */
+	len = xkcp_auth_encode_header(buf, sizeof(buf), "example.test", 443, "k", 7, now);
+	assert(len > 0);
+	parsed = xkcp_proto_decode_header_ex(buf, len, host_out, sizeof(host_out),
+					     &port_out, &ver, &ts, &token);
+	assert(parsed == len && ver == XKCP_PROTO_VER_2);
+	assert(strcmp(host_out, "example.test") == 0 && port_out == 443);
+	assert(xkcp_auth_verify("k", 7, host_out, port_out, ts, token, now) == 0);
+
+	/* legacy v1 header still decodes, without auth fields */
+	len = xkcp_proto_encode_header(buf, sizeof(buf), "10.1.2.3", 99);
+	assert(len > 0);
+	parsed = xkcp_proto_decode_header_ex(buf, len, host_out, sizeof(host_out),
+					     &port_out, &ver, &ts, &token);
+	assert(parsed == len && ver == XKCP_PROTO_VER_1 && ts == NULL && token == NULL);
+
+	printf("test_auth_roundtrip PASSED!\n");
+}
+
 int main(void)
 {
 	test_proto_handshake();
+	test_auth_roundtrip();
 
 	const char *test_toml = "/tmp/test_xkcp.toml";
 	FILE *fp = fopen(test_toml, "w");

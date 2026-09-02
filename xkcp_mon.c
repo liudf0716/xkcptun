@@ -250,7 +250,8 @@ struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, short port
 	struct sockaddr_in sin;
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = htonl(INADDR_ANY);
+	/* management interface: loopback only, it exposes tunnel details */
+	sin.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	sin.sin_port = htons(port);
 
 	struct evconnlistener *listener = evconnlistener_new_bind(
@@ -262,6 +263,6 @@ struct evconnlistener *set_xkcp_mon_listener(struct event_base *base, short port
 		return NULL;
 	}
 
-	debug(LOG_INFO, "Monitor listening on 0.0.0.0:%d", port);
+	debug(LOG_INFO, "Monitor listening on 127.0.0.1:%d", port);
 	return listener;
 }
