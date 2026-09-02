@@ -210,6 +210,61 @@ tcp_proxy_socks5_read_cb(struct bufferevent *bev, void *ctx)
 	}
 }
 
+#ifdef __linux__
+#include <linux/bpf.h>
+#include <sys/syscall.h>
+
+struct xkcp_bpf_tcp_session_key {
+	uint32_t client_ip;
+	uint16_t client_port;
+	uint16_t pad;
+};
+
+struct xkcp_bpf_tcp_session_val {
+	uint32_t orig_dst_ip;
+	uint16_t orig_dst_port;
+	uint16_t pad;
+	uint64_t timestamp;
+};
+
+static int xkcp_lookup_xdns_tcp_session(struct in_addr client_ip, uint16_t client_port, struct sockaddr_in *orig_dst)
+{
+	static int bpf_map_fd = -1;
+	if (bpf_map_fd < 0) {
+		union bpf_attr attr;
+		memset(&attr, 0, sizeof(attr));
+		attr.pathname = (uint64_t)(uintptr_t)"/sys/fs/bpf/xdns_tcp_sessions";
+		bpf_map_fd = syscall(__NR_bpf, BPF_OBJ_GET, &attr, sizeof(attr));
+		if (bpf_map_fd < 0) {
+			attr.pathname = (uint64_t)(uintptr_t)"/sys/fs/bpf/tc/globals/xdns_tcp_sessions";
+			bpf_map_fd = syscall(__NR_bpf, BPF_OBJ_GET, &attr, sizeof(attr));
+		}
+	}
+	if (bpf_map_fd < 0)
+		return -1;
+
+	struct xkcp_bpf_tcp_session_key key;
+	memset(&key, 0, sizeof(key));
+	key.client_ip = client_ip.s_addr;
+	key.client_port = client_port;
+
+	struct xkcp_bpf_tcp_session_val val;
+	union bpf_attr lookup_attr;
+	memset(&lookup_attr, 0, sizeof(lookup_attr));
+	lookup_attr.map_fd = bpf_map_fd;
+	lookup_attr.key = (uint64_t)(uintptr_t)&key;
+	lookup_attr.value = (uint64_t)(uintptr_t)&val;
+
+	if (syscall(__NR_bpf, BPF_MAP_LOOKUP_ELEM, &lookup_attr, sizeof(lookup_attr)) == 0) {
+		orig_dst->sin_family = AF_INET;
+		orig_dst->sin_addr.s_addr = val.orig_dst_ip;
+		orig_dst->sin_port = val.orig_dst_port;
+		return 0;
+	}
+	return -1;
+}
+#endif
+
 void
 tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct sockaddr *a, int slen, void *param)
@@ -289,14 +344,32 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	if (is_redir) {
 		struct sockaddr_in orig_dst;
 		socklen_t dlen = sizeof(orig_dst);
+		int found = 0;
 		if (getsockopt(fd, SOL_IP, SO_ORIGINAL_DST, &orig_dst, &dlen) == 0) {
 			inet_ntop(AF_INET, &orig_dst.sin_addr, thost, sizeof(thost));
 			tport = ntohs(orig_dst.sin_port);
+			found = 1;
 			debug(LOG_INFO, "[%s] conv [%u] SO_ORIGINAL_DST target [%s]:[%u]",
 			      tunnel->name, conv, thost, tport);
-		} else {
-			debug(LOG_WARNING, "[%s] conv [%u] getsockopt SO_ORIGINAL_DST failed: %s",
-			      tunnel->name, conv, strerror(errno));
+		}
+#ifdef __linux__
+		if (!found) {
+			struct sockaddr_in client_peer;
+			socklen_t plen = sizeof(client_peer);
+			if (getpeername(fd, (struct sockaddr *)&client_peer, &plen) == 0) {
+				if (xkcp_lookup_xdns_tcp_session(client_peer.sin_addr, client_peer.sin_port, &orig_dst) == 0) {
+					inet_ntop(AF_INET, &orig_dst.sin_addr, thost, sizeof(thost));
+					tport = ntohs(orig_dst.sin_port);
+					found = 1;
+					debug(LOG_INFO, "[%s] conv [%u] eBPF session target [%s]:[%u]",
+					      tunnel->name, conv, thost, tport);
+				}
+			}
+		}
+#endif
+		if (!found) {
+			debug(LOG_WARNING, "[%s] conv [%u] failed to resolve transparent original destination",
+			      tunnel->name, conv);
 			if (tunnel->param.target_addr)
 				snprintf(thost, sizeof(thost), "%s", tunnel->param.target_addr);
 		}
