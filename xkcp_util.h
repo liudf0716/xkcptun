@@ -76,6 +76,14 @@ struct xkcp_task {
 	int					handshake_done;	/* server: 1 = destination connected */
 	char				target_host[256];
 	uint16_t			target_port;
+	int					socks5_state;	/* 0=none, 1=greeting, 2=request, 3=connected */
+};
+
+enum {
+	XKCP_S5_NONE = 0,
+	XKCP_S5_GREETING,
+	XKCP_S5_REQUEST,
+	XKCP_S5_CONNECTED
 };
 
 typedef struct xkcp_task xkcp_task_type;

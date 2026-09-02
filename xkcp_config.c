@@ -94,6 +94,7 @@ void xkcp_param_clone(struct xkcp_param *dst, const struct xkcp_param *src)
 	dst->remote_addr = src->remote_addr ? strdup(src->remote_addr) : NULL;
 	dst->target_addr = src->target_addr ? strdup(src->target_addr) : NULL;
 	dst->proto = src->proto ? strdup(src->proto) : NULL;
+	dst->proxy_type = src->proxy_type ? strdup(src->proxy_type) : NULL;
 	dst->key = src->key ? strdup(src->key) : NULL;
 	dst->crypt = src->crypt ? strdup(src->crypt) : NULL;
 	dst->mode = src->mode ? strdup(src->mode) : NULL;
@@ -107,6 +108,7 @@ void xkcp_param_free(struct xkcp_param *param)
 	if (param->remote_addr) { free(param->remote_addr); param->remote_addr = NULL; }
 	if (param->target_addr) { free(param->target_addr); param->target_addr = NULL; }
 	if (param->proto) { free(param->proto); param->proto = NULL; }
+	if (param->proxy_type) { free(param->proxy_type); param->proxy_type = NULL; }
 	if (param->key) { free(param->key); param->key = NULL; }
 	if (param->crypt) { free(param->crypt); param->crypt = NULL; }
 	if (param->mode) { free(param->mode); param->mode = NULL; }
@@ -219,6 +221,14 @@ static void parse_tunnel_table(toml_table_t *tab, struct xkcp_param *param)
 		param->target_addr = strdup("127.0.0.1");
 
 	parse_string_opt(tab, "proto", "protocol", &param->proto);
+	parse_string_opt(tab, "proxy_type", "proxytype", &param->proxy_type);
+	if (param->proxy_type &&
+	    (!strcasecmp(param->proxy_type, "socks5") ||
+	     !strcasecmp(param->proxy_type, "redir") ||
+	     !strcasecmp(param->proxy_type, "transparent"))) {
+		param->dynamic_target = 1;
+	}
+
 	parse_string_opt(tab, "key", NULL, &param->key);
 	parse_string_opt(tab, "crypt", NULL, &param->crypt);
 	parse_string_opt(tab, "mode", NULL, &param->mode);
