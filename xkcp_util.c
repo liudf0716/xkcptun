@@ -394,7 +394,7 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 			ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
 			/* ikcp_flush alone is a no-op before the first ikcp_update */
 			ikcp_update(task->kcp, iclock());
-			puser = task->kcp->user;
+			puser = task->user_owned ? task->kcp->user : NULL;
 			ikcp_release(task->kcp);
 			task->kcp = NULL;
 		}
@@ -449,9 +449,10 @@ void xkcp_update_task_list(iqueue_head *task_list, const struct xkcp_param *para
 		/* in-band keepalive when the session has gone quiet */
 		if (param && param->keepalive > 0) {
 			IUINT32 idle_ms = (IUINT32)param->keepalive * 1000;
-			if (_itimediff(now, task->last_active) > (IINT32)idle_ms) {
+			if (_itimediff(now, task->last_active) > (IINT32)idle_ms &&
+			    _itimediff(now, task->last_keepalive) > (IINT32)idle_ms) {
 				ikcp_send(task->kcp, XKCP_NOP_SIGNAL, XKCP_NOP_SIGNAL_LEN);
-				task->last_active = now;
+				task->last_keepalive = now;
 			}
 		}
 
@@ -577,7 +578,7 @@ int xkcp_forward_data(struct xkcp_task *task)
 
 		/* Server side: perform dynamic destination handshake if not done yet */
 		if (task->user_owned && !task->handshake_done) {
-			char target_host[128] = {0};
+			char target_host[256] = {0};
 			uint16_t target_port = 0;
 			uint8_t ver = 0;
 			const uint8_t *ts = NULL;
@@ -645,7 +646,7 @@ int xkcp_forward_data(struct xkcp_task *task)
 				}
 			}
 			free(heapbuf);
-			task->last_active = iclock();
+			task->last_keepalive = task->last_active = iclock();
 			continue;
 		}
 
@@ -660,7 +661,7 @@ int xkcp_forward_data(struct xkcp_task *task)
 			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
 
 		free(heapbuf);
-		task->last_active = iclock();
+		task->last_keepalive = task->last_active = iclock();
 	}
 
 	return 1;

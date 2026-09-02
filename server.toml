@@ -2,3 +2,4 @@
 syslog = true
 mon_port = 9087
 local_port = 9089
+key = "7f7ac683d720e1437019692eadb0b811"

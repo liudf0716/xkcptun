@@ -84,6 +84,13 @@ static void test_auth_roundtrip(void)
 					     &port_out, &ver, &ts, &token);
 	assert(parsed == len && ver == XKCP_PROTO_VER_1 && ts == NULL && token == NULL);
 
+	/* buffer too small for domain: decode must fail safely with -1 */
+	len = xkcp_proto_encode_header(buf, sizeof(buf), "very-long-domain-name.test", 80);
+	assert(len > 0);
+	char small_host[8];
+	assert(xkcp_proto_decode_header_ex(buf, len, small_host, sizeof(small_host),
+					   &port_out, &ver, &ts, &token) < 0);
+
 	printf("test_auth_roundtrip PASSED!\n");
 }
 

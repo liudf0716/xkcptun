@@ -114,6 +114,7 @@ parse_commandline(int argc, char **argv)
 
 	/* Pre-pass: load the config file first so command-line options,
 	 * parsed below, take precedence over values from the file. */
+	opterr = 0;
 	optind = 1;
 	while (-1 != (c = getopt_long(argc, argv, optstring, long_options, NULL)))
 		if (c == 'c' && optarg) {
@@ -128,6 +129,7 @@ parse_commandline(int argc, char **argv)
 		exit(1);
 	}
 
+	opterr = 1;
 	optind = 1;
 	while (-1 != (c = getopt_long(argc, argv, optstring, long_options, NULL)))
 		switch (c) {
@@ -156,89 +158,110 @@ parse_commandline(int argc, char **argv)
 			}
 			break;
 
+#define OVERRIDE_PARAM_STR(field, val) do { \
+		free(param->field); \
+		param->field = strdup(val); \
+		if (config->num_tunnels > 0 && config->tunnels) { \
+			for (int _t = 0; _t < config->num_tunnels; _t++) { \
+				free(config->tunnels[_t].field); \
+				config->tunnels[_t].field = strdup(val); \
+			} \
+		} \
+	} while (0)
+
+#define OVERRIDE_PARAM_INT(field, val) do { \
+		param->field = (val); \
+		if (config->num_tunnels > 0 && config->tunnels) { \
+			for (int _t = 0; _t < config->num_tunnels; _t++) { \
+				config->tunnels[_t].field = (val); \
+			} \
+		} \
+	} while (0)
+
 		case 'i':
-			free(param->local_interface);
-			param->local_interface = strdup(optarg);
+			OVERRIDE_PARAM_STR(local_interface, optarg);
 			break;
 
 		case 'l':
-			param->local_port = atoi(optarg);
+			OVERRIDE_PARAM_INT(local_port, atoi(optarg));
 			break;
 
 		case 's':
-			free(param->remote_addr);
-			param->remote_addr = strdup(optarg);
+			OVERRIDE_PARAM_STR(remote_addr, optarg);
 			break;
 
 		case 'p':
-			param->remote_port = atoi(optarg);
+			OVERRIDE_PARAM_INT(remote_port, atoi(optarg));
 			break;
 
 		case 'k':
-			free(param->key);
-			param->key = strdup(optarg);
+			OVERRIDE_PARAM_STR(key, optarg);
 			break;
 
 		case 'e':
-			free(param->crypt);
-			param->crypt = strdup(optarg);
+			OVERRIDE_PARAM_STR(crypt, optarg);
 			break;
 
 		case 'm':
-			free(param->mode);
-			param->mode = strdup(optarg);
+			OVERRIDE_PARAM_STR(mode, optarg);
+			xkcp_apply_mode_param(param);
+			if (config->num_tunnels > 0 && config->tunnels) {
+				for (int _t = 0; _t < config->num_tunnels; _t++) {
+					xkcp_apply_mode_param(&config->tunnels[_t]);
+				}
+			}
 			break;
 
 		case GETOPT_VAL_MTU:
 		case 'M':
-			param->mtu= atoi(optarg);
+			OVERRIDE_PARAM_INT(mtu, atoi(optarg));
 			break;
 
 		case GETOPT_VAL_SNDWND:
 		case 'S':
-			param->sndwnd= atoi(optarg);
+			OVERRIDE_PARAM_INT(sndwnd, atoi(optarg));
 			break;
 
 		case GETOPT_VAL_RCVWND:
 		case 'R':
-			param->rcvwnd= atoi(optarg);
+			OVERRIDE_PARAM_INT(rcvwnd, atoi(optarg));
 			break;
 
 		case GETOPT_VAL_DATASHARD:
 		case 'D':
-			param->data_shard= atoi(optarg);
+			OVERRIDE_PARAM_INT(data_shard, atoi(optarg));
 			break;
 
 		case GETOPT_VAL_PARITYSHARD:
 		case 'P':
-			param->parity_shard= atoi(optarg);
+			OVERRIDE_PARAM_INT(parity_shard, atoi(optarg));
 			break;
 
 		case GETOPT_VAL_NOCOMP:
 		case 'N':
-			param->nocomp = 1;
+			OVERRIDE_PARAM_INT(nocomp, 1);
 			break;
 
 		case GETOPT_VAL_ACKNODELAY:
 		case 'A':
-			param->ack_nodelay = 1;
+			OVERRIDE_PARAM_INT(ack_nodelay, 1);
 			break;
 
 		case GETOPT_VAL_NODELAY:
 		case 'L':
-			param->nodelay = 1;
+			OVERRIDE_PARAM_INT(nodelay, 1);
 			break;
 
 		case GETOPT_VAL_INTERVAL:
-			param->interval = atoi(optarg);
+			OVERRIDE_PARAM_INT(interval, atoi(optarg));
 			break;
 
 		case GETOPT_VAL_KEEPALIVE:
-			param->keepalive = atoi(optarg);
+			OVERRIDE_PARAM_INT(keepalive, atoi(optarg));
 			break;
 
 		case GETOPT_VAL_CONN_TIMEOUT:
-			param->conn_timeout = atoi(optarg);
+			OVERRIDE_PARAM_INT(conn_timeout, atoi(optarg));
 			break;
 
 		case GETOPT_VAL_SYSLOG:

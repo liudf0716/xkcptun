@@ -69,11 +69,12 @@ struct xkcp_task {
 	struct bufferevent 	*bev;
 	struct sockaddr_in	*sockaddr;
 	IUINT32				last_active;
+	IUINT32				last_keepalive;
 	int					user_owned;
 	IUINT32				conv;		/* cached kcp conv, valid after free */
 	struct xkcp_tunnel	*tunnel;	/* back-pointer to owning tunnel */
 	int					handshake_done;	/* server: 1 = destination connected */
-	char				target_host[128];
+	char				target_host[256];
 	uint16_t			target_port;
 };
 

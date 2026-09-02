@@ -66,7 +66,7 @@ tcp_proxy_read_cb(struct bufferevent *bev, void *ctx)
 	if (!task || !task->kcp)
 		return;
 	xkcp_tcp_read_cb(bev, task->kcp);
-	task->last_active = iclock();
+	task->last_keepalive = task->last_active = iclock();
 	xkcp_forward_data(task);
 }
 
@@ -125,6 +125,7 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	task->bev = b_in;
 	task->sockaddr = &p->sockaddr;
 	task->last_active = iclock();
+	task->last_keepalive = task->last_active;
 	task->user_owned = 0;
 	task->conv = conv;
 	task->tunnel = tunnel;

@@ -149,14 +149,11 @@ static void server_tick_tunnel(struct xkcp_tunnel *tunnel)
 
 	for (b = 0; b < table->buckets; b++) {
 		jwHashEntry *e;
-		for (e = table->bucket[b]; e; e = e->next)
-			xkcp_update_task_list((iqueue_head *)e->value.ptrValue, &tunnel->param);
-	}
-	for (b = 0; b < table->buckets; b++) {
-		jwHashEntry *e;
-		for (e = table->bucket[b]; e; e = e->next)
-			xkcp_task_check_timeout_val((iqueue_head *)e->value.ptrValue,
-						    tunnel->param.conn_timeout);
+		for (e = table->bucket[b]; e; e = e->next) {
+			iqueue_head *list = (iqueue_head *)e->value.ptrValue;
+			xkcp_update_task_list(list, &tunnel->param);
+			xkcp_task_check_timeout_val(list, tunnel->param.conn_timeout);
+		}
 	}
 }
 
@@ -223,6 +220,7 @@ static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, c
 	task->bev = NULL;
 	task->sockaddr = &param->sockaddr;
 	task->last_active = iclock();
+	task->last_keepalive = task->last_active;
 	task->user_owned = 1;
 	task->conv = conv;
 	task->tunnel = tunnel;

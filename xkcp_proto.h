@@ -195,9 +195,10 @@ static inline int xkcp_proto_decode_header_ex(const char *buf, size_t buflen,
 			return -1; /* Incomplete */
 
 		if (host_out && host_out_len > 0) {
-			size_t copy_len = dlen < (host_out_len - 1) ? dlen : (host_out_len - 1);
-			memcpy(host_out, buf + offset, copy_len);
-			host_out[copy_len] = '\0';
+			if (dlen >= host_out_len)
+				return -1; /* Exceeds destination buffer */
+			memcpy(host_out, buf + offset, dlen);
+			host_out[dlen] = '\0';
 		}
 		offset += dlen;
 	} else {
