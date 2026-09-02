@@ -345,28 +345,31 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		struct sockaddr_in orig_dst;
 		socklen_t dlen = sizeof(orig_dst);
 		int found = 0;
-		if (getsockopt(fd, SOL_IP, SO_ORIGINAL_DST, &orig_dst, &dlen) == 0) {
-			inet_ntop(AF_INET, &orig_dst.sin_addr, thost, sizeof(thost));
-			tport = ntohs(orig_dst.sin_port);
-			found = 1;
-			debug(LOG_INFO, "[%s] conv [%u] SO_ORIGINAL_DST target [%s]:[%u]",
-			      tunnel->name, conv, thost, tport);
-		}
 #ifdef __linux__
-		if (!found) {
-			struct sockaddr_in client_peer;
-			socklen_t plen = sizeof(client_peer);
-			if (getpeername(fd, (struct sockaddr *)&client_peer, &plen) == 0) {
-				if (xkcp_lookup_xdns_tcp_session(client_peer.sin_addr, client_peer.sin_port, &orig_dst) == 0) {
-					inet_ntop(AF_INET, &orig_dst.sin_addr, thost, sizeof(thost));
-					tport = ntohs(orig_dst.sin_port);
-					found = 1;
-					debug(LOG_INFO, "[%s] conv [%u] eBPF session target [%s]:[%u]",
-					      tunnel->name, conv, thost, tport);
-				}
+		/* 1. Try querying xdns_tcp_sessions eBPF map first */
+		struct sockaddr_in client_peer;
+		socklen_t plen = sizeof(client_peer);
+		if (getpeername(fd, (struct sockaddr *)&client_peer, &plen) == 0) {
+			if (xkcp_lookup_xdns_tcp_session(client_peer.sin_addr, client_peer.sin_port, &orig_dst) == 0) {
+				inet_ntop(AF_INET, &orig_dst.sin_addr, thost, sizeof(thost));
+				tport = ntohs(orig_dst.sin_port);
+				found = 1;
+				debug(LOG_INFO, "[%s] conv [%u] eBPF session target [%s]:[%u]",
+				      tunnel->name, conv, thost, tport);
 			}
 		}
 #endif
+		/* 2. Fallback to Netfilter SO_ORIGINAL_DST */
+		if (!found && getsockopt(fd, SOL_IP, SO_ORIGINAL_DST, &orig_dst, &dlen) == 0) {
+			if (ntohs(orig_dst.sin_port) != (uint16_t)tunnel->param.local_port) {
+				inet_ntop(AF_INET, &orig_dst.sin_addr, thost, sizeof(thost));
+				tport = ntohs(orig_dst.sin_port);
+				found = 1;
+				debug(LOG_INFO, "[%s] conv [%u] SO_ORIGINAL_DST target [%s]:[%u]",
+				      tunnel->name, conv, thost, tport);
+			}
+		}
+
 		if (!found) {
 			debug(LOG_WARNING, "[%s] conv [%u] failed to resolve transparent original destination",
 			      tunnel->name, conv);
