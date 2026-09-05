@@ -35,7 +35,8 @@
 # Cmake build directories and middle files
 build/
 build-asan/
-dist/
+build-aarch64/
+build-x86/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -45,3 +46,5 @@ xkcp_client
 xkcp_server
 xkcp_spy
 kcptun_server
+
+docs/
