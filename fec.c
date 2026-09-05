@@ -12,6 +12,7 @@
 #include <stdio.h>
 
 #include <sys/time.h>
+#include <unistd.h>
 
 #include "fec.h"
 
@@ -172,6 +173,20 @@ struct fec_conn *fec_conn_new(int datashard, int parityshard, int shard_cap)
 	if (!c->coef) {
 		free(c);
 		return NULL;
+	}
+
+	/* Seed the tx group id from a random offset instead of 0.  The rx
+	 * dedup is a (gid,idx) bitmap over pending/done groups that are only
+	 * recycled when the ring refills; if the peer restarts (its gid
+	 * counter resets to 0) while our stale ring still holds those gids,
+	 * the whole fresh stream would be dropped as duplicates forever.
+	 * A random start makes a collision with the peer's stale ring
+	 * entries a ~64/65536 event instead of a certainty. */
+	{
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		c->next_gid = (uint16_t)(tv.tv_sec ^ (tv.tv_usec << 5) ^
+					 (uintptr_t)c ^ (getpid() << 8));
 	}
 	/* Cauchy matrix: x_i = i (parity rows), y_j = k+j... use r+j so
 	 * x and y ranges are disjoint: coeff = 1 / (x_i ^ y_j) */
