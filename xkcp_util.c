@@ -74,14 +74,6 @@ IINT64 iclock64(void)
 	return value;
 }
 
-void xkcp_set_sk_mark(int fd)
-{
-#ifdef SO_MARK
-	uint32_t mark = XKCP_SK_MARK;
-	setsockopt(fd, SOL_SOCKET, SO_MARK, &mark, sizeof(mark));
-#endif
-}
-
 IUINT32 iclock(void)
 {
 	return (IUINT32)(iclock64() & 0xfffffffful);

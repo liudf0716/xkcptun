@@ -236,10 +236,6 @@ int client_main_loop(void)
 		}
 
 		evutil_make_socket_nonblocking(xkcp_fd);
-		/* NOTE: the KCP tunnel socket itself must stay conntrack-tracked:
-		 * its UDP replies arrive on the WAN interface and fw4 accepts them
-		 * via ct state established.  Only LAN-facing sockets (redir/dns)
-		 * carry the SO_MARK exemption. */
 		xkcp_apply_sockbuf_param(xkcp_fd, p);
 		tunnel->xkcp_fd = xkcp_fd;
 

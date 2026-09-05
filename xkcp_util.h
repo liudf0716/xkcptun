@@ -89,15 +89,6 @@ enum {
 
 typedef struct xkcp_task xkcp_task_type;
 
-/* skb mark set on every LAN-facing socket/packet belonging to the tunnel, so
- * that netfilter raw-priority rules (installed by xdns-bpf's init script) can
- * exempt tunneled/redirected flows from conntrack.  Must match XDNS_SK_MARK
- * in xdns-bpf. */
-#define XKCP_SK_MARK		0x58444e53U	/* "XDNS" */
-#ifndef SO_MARK
-#define SO_MARK			36
-#endif
-
 /* Unified Tunnel Context */
 struct xkcp_tunnel {
 	iqueue_head			node;			/* node in xkcp_manager.tunnel_list */
@@ -191,7 +182,6 @@ void set_timer_interval_ms(struct event *timeout, int interval_ms);
 
 void xkcp_task_check_timeout_val(iqueue_head *task_list, int timeout_sec);
 void xkcp_teardown_dead_task(struct xkcp_task *task);
-void xkcp_set_sk_mark(int fd);
 
 /* O(1) conv -> task lookup backed by a scoped hash */
 struct xkcp_task *xkcp_find_task(IUINT32 conv, const struct sockaddr_in *peer, void *tunnel);
