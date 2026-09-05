@@ -282,6 +282,7 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	}
 
 	xkcp_set_tcp_nodelay(fd);
+	xkcp_set_sk_mark(fd);
 	b_in = bufferevent_socket_new(base, fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
 	if (!b_in) {

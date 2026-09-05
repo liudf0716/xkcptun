@@ -117,6 +117,7 @@ int init_udp_proxy(struct xkcp_tunnel *tunnel)
 		free(addr);
 		return -1;
 	}
+	xkcp_set_sk_mark(fd);
 
 	evutil_make_socket_nonblocking(fd);
 	evutil_make_listen_socket_reuseable(fd);
