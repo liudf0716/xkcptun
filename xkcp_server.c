@@ -224,7 +224,7 @@ static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, c
 	task->bev = NULL;
 	task->sockaddr = &param->sockaddr;
 	task->last_active = iclock();
-	task->last_keepalive = task->last_active;
+	task->last_keepalive = task->last_active = task->last_recv = iclock();
 	task->user_owned = 1;
 	task->conv = conv;
 	task->tunnel = tunnel;
@@ -277,6 +277,7 @@ static void server_handle_packet(struct xkcp_tunnel *tunnel, const int xkcpfd,
 	}
 
 	if (task->kcp) {
+		task->last_recv = iclock();
 		if (ikcp_input(task->kcp, buf, nrecv) < 0)
 			debug(LOG_INFO, "[%s] conv [%u] ikcp_input failed", tunnel->name, conv);
 		xkcp_forward_data(task);

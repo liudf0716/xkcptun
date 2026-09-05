@@ -69,6 +69,7 @@ static void client_handle_packet(struct xkcp_tunnel *tunnel, char *buf, int nrec
 	if (!task || !task->kcp)
 		return;
 
+	task->last_recv = iclock();
 	if (ikcp_input(task->kcp, buf, nrecv) < 0)
 		debug(LOG_INFO, "[%s] conv [%u] ikcp_input failed",
 		      tunnel ? tunnel->name : "default", conv);

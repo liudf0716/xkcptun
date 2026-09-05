@@ -431,6 +431,10 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 #define XKCP_SND_QUE_HIGH	256	/* queued KCP segments */
 #define XKCP_SND_QUE_LOW	64
 
+/* teardown a session when data is in flight but the peer has gone completely
+ * silent (no data, no ACKs) for this long */
+#define XKCP_DEAD_LINK_TIMEOUT_MS	30000
+
 void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 {
 	char buf[2048];
@@ -469,6 +473,25 @@ void xkcp_update_task_list(iqueue_head *task_list, const struct xkcp_param *para
 		if (!task->kcp)
 			continue;
 
+		/* dead-link teardown: we still have unacked/queued data but the peer
+		 * has sent nothing (not even ACKs) for XKCP_DEAD_LINK_TIMEOUT_MS.
+		 * Without this, a session whose peer died pumps retransmissions
+		 * forever, flooding the link (observed: >100k UDP packets per
+		 * zombie conv). kcp->state == (IUINT32)-1 is KCP's own
+		 * dead_link verdict (a segment retransmitted IKCP_DEADLINK times). */
+		if ((task->kcp->state == (IUINT32)-1) ||
+		    ((task->kcp->nsnd_buf > 0 || task->kcp->nsnd_que > 0) &&
+		     _itimediff(now, task->last_recv) > (IINT32)XKCP_DEAD_LINK_TIMEOUT_MS)) {
+			debug(LOG_WARNING, "dead link: conv [%u] no peer input for %d ms "
+				  "with %d/%d segments in flight, tearing down "
+				  "(now=%u last_recv=%u state=%u)",
+				  task->conv, XKCP_DEAD_LINK_TIMEOUT_MS,
+				  (int)task->kcp->nsnd_buf, (int)task->kcp->nsnd_que,
+				  now, task->last_recv, task->kcp->state);
+			xkcp_teardown_dead_task(task);
+			continue;
+		}
+
 		/* in-band keepalive when the session has gone quiet */
 		if (param && param->keepalive > 0) {
 			IUINT32 idle_ms = (IUINT32)param->keepalive * 1000;
@@ -493,6 +516,29 @@ void xkcp_update_task_list(iqueue_head *task_list, const struct xkcp_param *para
 			}
 		}
 	}
+}
+
+/* tear down a session whose peer has gone silent while data is in flight.
+ * the local TCP side is closed immediately (client sees a reset), a close
+ * signal is sent best-effort (usually lost, since the link is dead), and the
+ * kcp session is released so retransmissions stop. */
+void xkcp_teardown_dead_task(struct xkcp_task *task)
+{
+	if (task->bev) {
+		bufferevent_free(task->bev);
+		task->bev = NULL;
+	}
+	del_task(task);
+	if (task->kcp) {
+		ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
+		ikcp_update(task->kcp, iclock());
+		void *puser = task->kcp->user;
+		ikcp_release(task->kcp);
+		task->kcp = NULL;
+		if (task->user_owned && puser)
+			free(puser);
+	}
+	free(task);
 }
 
 static void xkcp_bev_drain_cb(struct bufferevent *bev, void *ctx)
@@ -570,8 +616,8 @@ int xkcp_forward_data(struct xkcp_task *task)
 			break;
 		}
 
-		/* any in-band message counts as session activity */
-		task->last_active = iclock();
+		/* any in-band message (data or ACK) counts as peer activity */
+		task->last_active = task->last_recv = iclock();
 
 		if (nrecv == XKCP_CLOSE_SIGNAL_LEN &&
 			memcmp(obuf, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN) == 0) {

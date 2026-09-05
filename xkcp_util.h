@@ -70,6 +70,7 @@ struct xkcp_task {
 	struct sockaddr_in	*sockaddr;
 	IUINT32				last_active;
 	IUINT32				last_keepalive;
+	IUINT32				last_recv;	/* last time a packet from the peer was fed into kcp */
 	int					user_owned;
 	IUINT32				conv;		/* cached kcp conv, valid after free */
 	struct xkcp_tunnel	*tunnel;	/* back-pointer to owning tunnel */
@@ -180,6 +181,7 @@ void xkcp_update_task_list(iqueue_head *task_list, const struct xkcp_param *para
 void set_timer_interval_ms(struct event *timeout, int interval_ms);
 
 void xkcp_task_check_timeout_val(iqueue_head *task_list, int timeout_sec);
+void xkcp_teardown_dead_task(struct xkcp_task *task);
 
 /* O(1) conv -> task lookup backed by a scoped hash */
 struct xkcp_task *xkcp_find_task(IUINT32 conv, const struct sockaddr_in *peer, void *tunnel);
