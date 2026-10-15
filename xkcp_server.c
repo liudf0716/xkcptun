@@ -213,7 +213,7 @@ static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, c
 		param->fec = get_peer_fec(tunnel, fkey);
 	}
 
-	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
+	struct xkcp_task *task = calloc(1, sizeof(struct xkcp_task));
 	if (!task) {
 		debug(LOG_ERR, "[%s] alloc task for conv [%u] failed", tunnel->name, conv);
 		ikcp_release(kcp_server);

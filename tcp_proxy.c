@@ -303,7 +303,7 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	debug(LOG_INFO, "[%s] accept new client [%d] in, conv [%u]",
 	      tunnel->name, fd, conv);
 
-	struct xkcp_task *task = malloc(sizeof(struct xkcp_task));
+	struct xkcp_task *task = calloc(1, sizeof(struct xkcp_task));
 	if (!task) {
 		debug(LOG_ERR, "[%s] alloc task failed, closing fd [%d]", tunnel->name, fd);
 		ikcp_release(kcp_client);
@@ -322,6 +322,8 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	task->target_host[0] = '\0';
 	task->target_port = 0;
 	task->socks5_state = XKCP_S5_NONE;
+	task->pending_buf = NULL;
+	task->egress_state = XKCP_EGRESS_DIRECT;
 
 	int is_socks5 = (tunnel->param.proxy_type &&
 			 !strcasecmp(tunnel->param.proxy_type, "socks5"));

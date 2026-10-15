@@ -223,7 +223,6 @@ void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 		xkcp_set_tcp_nodelay(bufferevent_getfd(bev));
 
 		if (task->egress_state == XKCP_EGRESS_S5_CONNECTING) {
-			/* Connected to SOCKS5 upstream proxy: send greeting */
 			uint8_t greeting[3] = {0x05, 0x01, 0x00};
 			bufferevent_write(bev, greeting, sizeof(greeting));
 			task->egress_state = XKCP_EGRESS_S5_GREETING_SENT;
@@ -267,7 +266,7 @@ void tcp_client_event_cb(struct bufferevent *bev, short what, void *ctx)
 			if (xkcp_server_connect_direct(task, task->target_host, task->target_port) < 0) {
 				debug(LOG_ERR, "[%s] conv [%u] direct fallback to [%s]:[%u] failed",
 				      tunnel->name, task->conv, task->target_host, task->target_port);
-				void *puser = xkcp_tcp_event_cb(NULL, what, ctx);
+				void *puser = xkcp_tcp_event_cb(NULL, what, task);
 				if (puser) free(puser);
 				clean_useless_client(tunnel);
 			}
@@ -301,29 +300,28 @@ void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
 		}
 		evbuffer_drain(input, 2);
 
-		/* Build and send SOCKS5 CONNECT request */
 		uint8_t req[512];
-		req[0] = 0x05; /* VER */
-		req[1] = 0x01; /* CMD: CONNECT */
-		req[2] = 0x00; /* RSV */
+		req[0] = 0x05;
+		req[1] = 0x01;
+		req[2] = 0x00;
 		size_t req_len = 0;
 
 		struct in_addr sin_addr;
 		struct in6_addr sin6_addr;
 		if (inet_pton(AF_INET, task->target_host, &sin_addr) == 1) {
-			req[3] = 0x01; /* IPv4 */
+			req[3] = 0x01;
 			memcpy(req + 4, &sin_addr.s_addr, 4);
 			uint16_t p = htons(task->target_port);
 			memcpy(req + 8, &p, 2);
 			req_len = 10;
 		} else if (inet_pton(AF_INET6, task->target_host, &sin6_addr) == 1) {
-			req[3] = 0x04; /* IPv6 */
+			req[3] = 0x04;
 			memcpy(req + 4, &sin6_addr, 16);
 			uint16_t p = htons(task->target_port);
 			memcpy(req + 20, &p, 2);
 			req_len = 22;
 		} else {
-			req[3] = 0x03; /* Domain */
+			req[3] = 0x03;
 			size_t dlen = strlen(task->target_host);
 			if (dlen > 255) dlen = 255;
 			req[4] = (uint8_t)dlen;
@@ -356,12 +354,13 @@ void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
 			goto proxy_fail;
 		}
 
+		/* Drain variable-length SOCKS5 BND.ADDR + BND.PORT before forwarding remote stream */
 		size_t needed = 0;
-		if (rep[3] == 0x01) { /* IPv4 */
+		if (rep[3] == 0x01) {
 			needed = 4 + 4 + 2;
-		} else if (rep[3] == 0x04) { /* IPv6 */
+		} else if (rep[3] == 0x04) {
 			needed = 4 + 16 + 2;
-		} else if (rep[3] == 0x03) { /* Domain */
+		} else if (rep[3] == 0x03) {
 			if (in_len < 5) return;
 			uint8_t dlen = rep[4];
 			needed = 4 + 1 + dlen + 2;
@@ -381,7 +380,6 @@ void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
 		      tunnel ? tunnel->name : "server", task->conv,
 		      task->target_host, task->target_port);
 
-		/* Flush any pending client data received from KCP */
 		if (task->pending_buf && evbuffer_get_length(task->pending_buf) > 0) {
 			evbuffer_add_buffer(bufferevent_get_output(bev), task->pending_buf);
 			evbuffer_free(task->pending_buf);
@@ -392,7 +390,6 @@ void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
 			return;
 	}
 
-	/* Standard streaming data relay from TCP target to KCP */
 	ikcpcb *kcp = task->kcp;
 	if (!kcp)
 		return;

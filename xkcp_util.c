@@ -417,7 +417,7 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 
 	if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		debug(LOG_INFO, "tcp closed conv [%u] what [%d] fd [%d]",
-			  task->conv, what, bufferevent_getfd(bev));
+			  task->conv, what, bev ? bufferevent_getfd(bev) : -1);
 		if (task->kcp) {
 			ikcp_send(task->kcp, XKCP_CLOSE_SIGNAL, XKCP_CLOSE_SIGNAL_LEN);
 			/* ikcp_flush alone is a no-op before the first ikcp_update */
@@ -427,7 +427,8 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 			task->kcp = NULL;
 		}
 		del_task(task);
-		bufferevent_free(bev);
+		if (bev)
+			bufferevent_free(bev);
 		free(task);
 	}
 	return puser;
@@ -742,7 +743,9 @@ int xkcp_forward_data(struct xkcp_task *task)
 		}
 
 		if (task->bev) {
-			if (task->egress_state == XKCP_EGRESS_DIRECT || task->egress_state == XKCP_EGRESS_READY) {
+			if (!task->user_owned ||
+			    task->egress_state == XKCP_EGRESS_DIRECT ||
+			    task->egress_state == XKCP_EGRESS_READY) {
 				evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
 			} else {
 				if (!task->pending_buf) task->pending_buf = evbuffer_new();
