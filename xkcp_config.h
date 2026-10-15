@@ -36,6 +36,8 @@ struct xkcp_param {
 	int		dynamic_target;	    // 1 = enable dynamic destination first-packet header
 	char	*proto;		    // tunnel protocol: "tcp" (default) or "udp"
 	char	*proxy_type;	    // proxy mode: "forward" (default), "redir" (transparent), "socks5"
+	char	*egress_proxy;	    // upstream proxy on server side (e.g. "127.0.0.1:1080")
+	int		egress_fallback_direct; // 1 = fallback to direct connection if egress_proxy is unreachable (default: 1)
 
 	char	*key;			    // key
 	char	*crypt; 		    // crypt

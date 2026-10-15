@@ -231,6 +231,9 @@ static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, c
 	task->handshake_done = 0;
 	task->target_host[0] = '\0';
 	task->target_port = 0;
+	task->socks5_state = XKCP_S5_NONE;
+	task->pending_buf = NULL;
+	task->egress_state = XKCP_EGRESS_DIRECT;
 
 	add_task_tail(task, task_list);
 	debug(LOG_INFO, "[%s] new session conv [%u] created (awaiting dynamic target / data)",

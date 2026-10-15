@@ -177,6 +177,11 @@ del_task(struct xkcp_task *task) {
 
 	__list_del(entry->prev, entry->next);
 
+	if (task->pending_buf) {
+		evbuffer_free(task->pending_buf);
+		task->pending_buf = NULL;
+	}
+
 	if (conv_hash && task->conv) {
 		char key[64];
 		struct xkcp_task *cur = NULL;
@@ -680,7 +685,12 @@ int xkcp_forward_data(struct xkcp_task *task)
 					return forward_close_session(task);
 				}
 				if (nrecv > hdr_len && task->bev) {
-					evbuffer_add(bufferevent_get_output(task->bev), obuf + hdr_len, nrecv - hdr_len);
+					if (task->egress_state == XKCP_EGRESS_DIRECT || task->egress_state == XKCP_EGRESS_READY) {
+						evbuffer_add(bufferevent_get_output(task->bev), obuf + hdr_len, nrecv - hdr_len);
+					} else {
+						if (!task->pending_buf) task->pending_buf = evbuffer_new();
+						evbuffer_add(task->pending_buf, obuf + hdr_len, nrecv - hdr_len);
+					}
 				}
 			} else if (hdr_len > 0) {
 				debug(LOG_WARNING, "[%s] conv [%u] legacy unauthenticated dynamic header rejected",
@@ -711,7 +721,12 @@ int xkcp_forward_data(struct xkcp_task *task)
 					return forward_close_session(task);
 				}
 				if (task->bev) {
-					evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
+					if (task->egress_state == XKCP_EGRESS_DIRECT || task->egress_state == XKCP_EGRESS_READY) {
+						evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
+					} else {
+						if (!task->pending_buf) task->pending_buf = evbuffer_new();
+						evbuffer_add(task->pending_buf, obuf, nrecv);
+					}
 				}
 			}
 			free(heapbuf);
@@ -726,8 +741,17 @@ int xkcp_forward_data(struct xkcp_task *task)
 			continue;
 		}
 
-		if (task->bev)
-			evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
+		if (task->bev) {
+			if (task->egress_state == XKCP_EGRESS_DIRECT || task->egress_state == XKCP_EGRESS_READY) {
+				evbuffer_add(bufferevent_get_output(task->bev), obuf, nrecv);
+			} else {
+				if (!task->pending_buf) task->pending_buf = evbuffer_new();
+				evbuffer_add(task->pending_buf, obuf, nrecv);
+			}
+		} else if (task->user_owned && task->target_port > 0) {
+			if (!task->pending_buf) task->pending_buf = evbuffer_new();
+			evbuffer_add(task->pending_buf, obuf, nrecv);
+		}
 
 		free(heapbuf);
 		task->last_keepalive = task->last_active = iclock();

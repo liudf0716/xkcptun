@@ -237,6 +237,32 @@ int main(void)
 	xkcp_free_config();
 	remove(test_toml);
 
+	/* 5. Test Egress Proxy configuration and fallback defaults */
+	const char *egress_toml = "/tmp/test_xkcp_egress.toml";
+	fp = fopen(egress_toml, "w");
+	assert(fp != NULL);
+	fprintf(fp,
+		"[global]\n"
+		"local_port = 9089\n"
+		"key = \"colab-key\"\n"
+		"mode = \"fast3\"\n"
+		"egress_proxy = \"127.0.0.1:1080\"\n"
+		"egress_fallback_direct = true\n"
+	);
+	fclose(fp);
+
+	config_init();
+	rc = xkcp_parse_param(egress_toml);
+	assert(rc == 0);
+	cfg = xkcp_get_config();
+	assert(cfg->param.egress_proxy != NULL);
+	assert(strcmp(cfg->param.egress_proxy, "127.0.0.1:1080") == 0);
+	assert(cfg->param.egress_fallback_direct == 1);
+
+	xkcp_free_config();
+	remove(egress_toml);
+	printf("test_egress_proxy_config PASSED!\n");
+
 	printf("All TOML parser & Dynamic Destination unit tests PASSED successfully!\n");
 	return 0;
 }

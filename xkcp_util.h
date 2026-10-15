@@ -78,6 +78,8 @@ struct xkcp_task {
 	char				target_host[256];
 	uint16_t			target_port;
 	int					socks5_state;	/* 0=none, 1=greeting, 2=request, 3=connected */
+	struct evbuffer		*pending_buf;	/* buffered data awaiting egress proxy or fallback direct */
+	int					egress_state;	/* server egress proxy state */
 };
 
 enum {
@@ -85,6 +87,14 @@ enum {
 	XKCP_S5_GREETING,
 	XKCP_S5_REQUEST,
 	XKCP_S5_CONNECTED
+};
+
+enum {
+	XKCP_EGRESS_DIRECT = 0,
+	XKCP_EGRESS_S5_CONNECTING,
+	XKCP_EGRESS_S5_GREETING_SENT,
+	XKCP_EGRESS_S5_REQUEST_SENT,
+	XKCP_EGRESS_READY
 };
 
 typedef struct xkcp_task xkcp_task_type;

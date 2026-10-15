@@ -53,6 +53,9 @@ void xkcp_param_init(struct xkcp_param *param)
 	param->target_port = 0;
 	param->dynamic_target = 0;
 	param->proto = strdup("tcp");
+	param->proxy_type = NULL;
+	param->egress_proxy = NULL;
+	param->egress_fallback_direct = 1;
 	param->key = strdup("it's a secret");
 	param->crypt = strdup("none");
 	param->mode = strdup("fast3");
@@ -95,6 +98,7 @@ void xkcp_param_clone(struct xkcp_param *dst, const struct xkcp_param *src)
 	dst->target_addr = src->target_addr ? strdup(src->target_addr) : NULL;
 	dst->proto = src->proto ? strdup(src->proto) : NULL;
 	dst->proxy_type = src->proxy_type ? strdup(src->proxy_type) : NULL;
+	dst->egress_proxy = src->egress_proxy ? strdup(src->egress_proxy) : NULL;
 	dst->key = src->key ? strdup(src->key) : NULL;
 	dst->crypt = src->crypt ? strdup(src->crypt) : NULL;
 	dst->mode = src->mode ? strdup(src->mode) : NULL;
@@ -109,6 +113,7 @@ void xkcp_param_free(struct xkcp_param *param)
 	if (param->target_addr) { free(param->target_addr); param->target_addr = NULL; }
 	if (param->proto) { free(param->proto); param->proto = NULL; }
 	if (param->proxy_type) { free(param->proxy_type); param->proxy_type = NULL; }
+	if (param->egress_proxy) { free(param->egress_proxy); param->egress_proxy = NULL; }
 	if (param->key) { free(param->key); param->key = NULL; }
 	if (param->crypt) { free(param->crypt); param->crypt = NULL; }
 	if (param->mode) { free(param->mode); param->mode = NULL; }
@@ -228,6 +233,11 @@ static void parse_tunnel_table(toml_table_t *tab, struct xkcp_param *param)
 	     !strcasecmp(param->proxy_type, "transparent"))) {
 		param->dynamic_target = 1;
 	}
+
+	parse_string_opt(tab, "egress_proxy", "egressproxy", &param->egress_proxy);
+	if (!param->egress_proxy)
+		parse_string_opt(tab, "socks5_proxy", "socks5proxy", &param->egress_proxy);
+	parse_int_opt(tab, "egress_fallback_direct", "egressfallbackdirect", &param->egress_fallback_direct);
 
 	parse_string_opt(tab, "key", NULL, &param->key);
 	parse_string_opt(tab, "crypt", NULL, &param->crypt);

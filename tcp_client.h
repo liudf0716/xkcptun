@@ -11,5 +11,6 @@ void tcp_client_read_cb(struct bufferevent *bev, void *ctx);
 
 struct xkcp_task;
 int xkcp_server_connect_target(struct xkcp_task *task, const char *host, uint16_t port);
+int xkcp_server_connect_direct(struct xkcp_task *task, const char *host, uint16_t port);
 
 #endif
