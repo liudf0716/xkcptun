@@ -227,11 +227,29 @@ static void parse_tunnel_table(toml_table_t *tab, struct xkcp_param *param)
 
 	parse_string_opt(tab, "proto", "protocol", &param->proto);
 	parse_string_opt(tab, "proxy_type", "proxytype", &param->proxy_type);
-	if (param->proxy_type &&
+
+	/* UDP only supports fixed-target port forwarding */
+	if (param->proto && !strcasecmp(param->proto, "udp")) {
+		if (param->proxy_type && strcasecmp(param->proxy_type, "forward") != 0) {
+			debug(LOG_WARNING, "[%s] UDP only supports 'forward' proxy mode; correcting proxy_type from [%s] to 'forward'",
+			      param->name ? param->name : "tunnel", param->proxy_type);
+			free(param->proxy_type);
+			param->proxy_type = strdup("forward");
+		} else if (!param->proxy_type) {
+			param->proxy_type = strdup("forward");
+		}
+	} else if (param->proxy_type &&
 	    (!strcasecmp(param->proxy_type, "socks5") ||
 	     !strcasecmp(param->proxy_type, "redir") ||
 	     !strcasecmp(param->proxy_type, "transparent"))) {
 		param->dynamic_target = 1;
+	} else if (!param->proxy_type) {
+		if (param->target_port > 0) {
+			param->proxy_type = strdup("forward");
+		} else {
+			param->proxy_type = strdup("redir");
+			param->dynamic_target = 1;
+		}
 	}
 
 	parse_string_opt(tab, "egress_proxy", "egressproxy", &param->egress_proxy);
