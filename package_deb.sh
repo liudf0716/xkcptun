@@ -24,12 +24,15 @@ SERVER_PKG="/tmp/pkg_xkcptun_server"
 rm -rf "$SERVER_PKG"
 mkdir -p "$SERVER_PKG/DEBIAN"
 mkdir -p "$SERVER_PKG/usr/local/bin"
+mkdir -p "$SERVER_PKG/usr/bin"
 mkdir -p "$SERVER_PKG/etc/xkcptun"
 mkdir -p "$SERVER_PKG/lib/systemd/system"
 
 # 二进制文件
 cp build/xkcp_server "$SERVER_PKG/usr/local/bin/"
 cp build/xkcp_spy "$SERVER_PKG/usr/local/bin/"
+ln -sf /usr/local/bin/xkcp_server "$SERVER_PKG/usr/bin/xkcp_server"
+ln -sf /usr/local/bin/xkcp_spy "$SERVER_PKG/usr/bin/xkcp_spy"
 
 # 默认服务端配置文件
 cat << 'TOML' > "$SERVER_PKG/etc/xkcptun/server.toml"
@@ -65,9 +68,32 @@ Section: net
 Priority: optional
 Architecture: ${ARCH}
 Maintainer: liudf0716 <liudf0716@gmail.com>
-Depends: libc6, libevent-2.1-7
+Depends: libc6, libevent-2.1-7 | libevent-2.1-7t64 | libevent-core-2.1-7 | libevent-core-2.1-7t64
 Description: High speed and loss-resilient encrypted KCP tunnel server for Linux
 CTRL
+
+# postinst: 重新加载 systemd
+cat << 'POSTINST' > "$SERVER_PKG/DEBIAN/postinst"
+#!/bin/sh
+set -e
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+exit 0
+POSTINST
+chmod 755 "$SERVER_PKG/DEBIAN/postinst"
+
+# prerm: 停止服务
+cat << 'PRERM' > "$SERVER_PKG/DEBIAN/prerm"
+#!/bin/sh
+set -e
+if [ -d /run/systemd/system ]; then
+    systemctl stop xkcp_server >/dev/null 2>&1 || true
+    systemctl disable xkcp_server >/dev/null 2>&1 || true
+fi
+exit 0
+PRERM
+chmod 755 "$SERVER_PKG/DEBIAN/prerm"
 
 # 标记配置文件，升级时不覆盖用户配置
 echo "/etc/xkcptun/server.toml" > "$SERVER_PKG/DEBIAN/conffiles"
