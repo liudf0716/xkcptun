@@ -97,7 +97,8 @@ set(src_xkcp_server
 	xkcp_config.c
 	toml.c
 	xkcp_mon.c
-	fec.c)
+	fec.c
+	xkcp_sockbuf.c)
 
 set(src_xkcp_client
 	tcp_proxy.c
@@ -112,7 +113,8 @@ set(src_xkcp_client
 	jwHash.c
 	toml.c
 	xkcp_mon.c
-	fec.c)
+	fec.c
+	xkcp_sockbuf.c)
 
 set(libs
     m
@@ -129,6 +131,9 @@ add_test(NAME fec COMMAND test_fec)
 
 add_executable(test_toml test_toml.c xkcp_config.c xkcp_auth.c toml.c debug.c)
 add_test(NAME toml COMMAND test_toml)
+
+add_executable(test_sockbuf test_sockbuf.c xkcp_sockbuf.c debug.c)
+add_test(NAME sockbuf COMMAND test_sockbuf)
 
 enable_testing()
 

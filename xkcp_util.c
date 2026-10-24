@@ -388,25 +388,7 @@ void xkcp_set_tcp_nodelay(int fd)
 	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 }
 
-void xkcp_apply_sockbuf_param(int fd, struct xkcp_param *param)
-{
-	if (!param) return;
 
-	if (param->dscp > 0) {
-		int tos = (param->dscp << 2) & 0xFF;
-		if (setsockopt(fd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos)) < 0)
-			debug(LOG_WARNING, "setsockopt IP_TOS [dscp=%d] failed: %s", param->dscp, strerror(errno));
-	}
-
-	int bufsz = param->sock_buf;
-	if (bufsz <= 0)
-		return;
-
-	if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &bufsz, sizeof(bufsz)) < 0)
-		debug(LOG_WARNING, "setsockopt SO_RCVBUF [%d] failed: %s", bufsz, strerror(errno));
-	if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &bufsz, sizeof(bufsz)) < 0)
-		debug(LOG_WARNING, "setsockopt SO_SNDBUF [%d] failed: %s", bufsz, strerror(errno));
-}
 
 void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task)
 {

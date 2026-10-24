@@ -64,6 +64,8 @@ make
 
 3, [如何在centos上部署xkcptun server](https://github.com/liudf0716/xkcptun/pull/11)
 
+4, [AW 上大文件下载 EOF：xkcptun UDP 接收缓冲区排查与代码修复建议](AW-UDP-RX-BUFFER-EOF.md)
+
 ### OpenWrt
 编译及安装请参考 [openwrt-xkcptun](https://github.com/gigibox/openwrt-xkcptun)
 
