@@ -82,6 +82,8 @@ void xkcp_param_init(struct xkcp_param *param)
 	param->nc = 1;
 	param->loss_ctrl = 0;
 	param->pacing = 0;
+	param->fastlimit = 5;
+	param->dead_link = 50;
 	param->fec = 1;
 	param->sock_buf = 16777216;
 	param->keepalive = 10;
@@ -278,6 +280,8 @@ static void parse_tunnel_table(toml_table_t *tab, struct xkcp_param *param)
 	parse_int_opt(tab, "nc", NULL, &param->nc);
 	parse_int_opt(tab, "loss_ctrl", "lossctrl", &param->loss_ctrl);
 	parse_int_opt(tab, "pacing", NULL, &param->pacing);
+	parse_int_opt(tab, "fastlimit", NULL, &param->fastlimit);
+	parse_int_opt(tab, "dead_link", "deadlink", &param->dead_link);
 	parse_int_opt(tab, "fec", NULL, &param->fec);
 	parse_int_opt(tab, "sock_buf", "sockbuf", &param->sock_buf);
 	parse_int_opt(tab, "keepalive", NULL, &param->keepalive);

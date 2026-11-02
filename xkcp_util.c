@@ -374,6 +374,10 @@ void xkcp_set_tunnel_config_param(ikcpcb *kcp, struct xkcp_param *param)
 	kcp->loss_wnd = (param->loss_ctrl != 0) ? kcp->snd_wnd : 0;
 	kcp->pacing = param->pacing;
 	ikcp_nodelay(kcp, param->nodelay, param->interval, param->resend, param->nc);
+	if (param->fastlimit >= 0)
+		ikcp_setfastlimit(kcp, param->fastlimit);
+	if (param->dead_link > 0)
+		ikcp_setdeadlink(kcp, param->dead_link);
 	if (param->mtu > 0) {
 		int mtu = param->mtu;
 		if (param->fec && mtu > FEC_HDR_SIZE)
@@ -470,12 +474,12 @@ void xkcp_update_task_list(iqueue_head *task_list, const struct xkcp_param *para
 		if ((task->kcp->state == (IUINT32)-1) ||
 		    ((task->kcp->nsnd_buf > 0 || task->kcp->nsnd_que > 0) &&
 		     _itimediff(now, task->last_recv) > (IINT32)XKCP_DEAD_LINK_TIMEOUT_MS)) {
-			debug(LOG_WARNING, "dead link: conv [%u] no peer input for %d ms "
-				  "with %d/%d segments in flight, tearing down "
-				  "(now=%u last_recv=%u state=%u)",
-				  task->conv, XKCP_DEAD_LINK_TIMEOUT_MS,
+			debug(LOG_WARNING, "dead link: conv [%u] reason=%s with %d/%d segments in flight, tearing down "
+				  "(now=%u last_recv=%u idle=%dms state=%u)",
+				  task->conv,
+				  (task->kcp->state == (IUINT32)-1) ? "xmit_limit" : "peer_timeout",
 				  (int)task->kcp->nsnd_buf, (int)task->kcp->nsnd_que,
-				  now, task->last_recv, task->kcp->state);
+				  now, task->last_recv, (int)_itimediff(now, task->last_recv), task->kcp->state);
 			xkcp_teardown_dead_task(task);
 			continue;
 		}

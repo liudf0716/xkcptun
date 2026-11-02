@@ -190,6 +190,8 @@ int main(void)
 		"local_port = 8080\n"
 		"target_addr = \"192.168.1.50\"\n"
 		"target_port = 80\n"
+		"fastlimit = 8\n"
+		"dead_link = 80\n"
 	);
 	fclose(fp);
 
@@ -221,6 +223,8 @@ int main(void)
 	assert(t1->data_shard == 10);
 	assert(t1->parity_shard == 3);
 	assert(t1->pacing == 128);
+	assert(t1->fastlimit == 5);
+	assert(t1->dead_link == 50);
 
 	/* Tunnel 2 check */
 	struct xkcp_param *t2 = &cfg->tunnels[1];
@@ -233,6 +237,8 @@ int main(void)
 	assert(strcmp(t2->target_addr, "192.168.1.50") == 0);
 	assert(t2->target_port == 80);
 	assert(t2->fec == 1);
+	assert(t2->fastlimit == 8);
+	assert(t2->dead_link == 80);
 
 	xkcp_free_config();
 	remove(test_toml);

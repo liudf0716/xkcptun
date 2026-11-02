@@ -36,7 +36,7 @@ const IUINT32 IKCP_MTU_DEF = 1400;
 const IUINT32 IKCP_ACK_FAST	= 3;
 const IUINT32 IKCP_INTERVAL	= 100;
 const IUINT32 IKCP_OVERHEAD = 24;
-const IUINT32 IKCP_DEADLINK = 20;
+const IUINT32 IKCP_DEADLINK = 50;
 const IUINT32 IKCP_THRESH_INIT = 2;
 const IUINT32 IKCP_THRESH_MIN = 2;
 const IUINT32 IKCP_PROBE_INIT = 7000;		// 7 secs to probe window size
@@ -288,6 +288,7 @@ ikcpcb* ikcp_create(IUINT32 conv, void *user)
 	kcp->loss_ts = 0;
 	kcp->grow_ts = 0;
 	kcp->pacing = 0;
+	kcp->fastlimit = 5;
     kcp->dead_link = IKCP_DEADLINK;
 	kcp->output = NULL;
 	kcp->writelog = NULL;
@@ -1071,11 +1072,13 @@ void ikcp_flush(ikcpcb *kcp)
 			lost = 1;
 		}
 		else if (segment->fastack >= resent) {
-			needsend = 1;
-			segment->xmit++;
-			segment->fastack = 0;
-			segment->resendts = current + segment->rto;
-			change++;
+			if ((int)segment->xmit <= (int)kcp->fastlimit || kcp->fastlimit <= 0) {
+				needsend = 1;
+				segment->xmit++;
+				segment->fastack = 0;
+				segment->resendts = current + segment->rto;
+				change++;
+			}
 		}
 
 		if (needsend) {
@@ -1302,6 +1305,24 @@ int ikcp_waitsnd(const ikcpcb *kcp)
 	return kcp->nsnd_buf + kcp->nsnd_que;
 }
 
+
+int ikcp_setfastlimit(ikcpcb *kcp, int fastlimit)
+{
+	if (kcp) {
+		kcp->fastlimit = fastlimit;
+	}
+	return 0;
+}
+
+int ikcp_setdeadlink(ikcpcb *kcp, int deadlink)
+{
+	if (kcp) {
+		if (deadlink > 0) {
+			kcp->dead_link = deadlink;
+		}
+	}
+	return 0;
+}
 
 // read conv
 IUINT32 ikcp_getconv(const void *ptr)

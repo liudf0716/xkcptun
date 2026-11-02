@@ -306,6 +306,7 @@ struct IKCPCB
 	void *user;
 	char *buffer;
 	int fastresend;
+	int fastlimit;
 	int nocwnd, stream;
 	int pacing;		/* max data segments per flush tick, 0 = unlimited */
 	int logmask;
@@ -396,6 +397,9 @@ int ikcp_waitsnd(const ikcpcb *kcp);
 // resend: 0:disable fast resend(default), 1:enable fast resend
 // nc: 0:normal congestion control(default), 1:disable congestion control
 int ikcp_nodelay(ikcpcb *kcp, int nodelay, int interval, int resend, int nc);
+
+int ikcp_setfastlimit(ikcpcb *kcp, int fastlimit);
+int ikcp_setdeadlink(ikcpcb *kcp, int deadlink);
 
 int ikcp_rcvbuf_count(const ikcpcb *kcp);
 int ikcp_sndbuf_count(const ikcpcb *kcp);

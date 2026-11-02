@@ -59,6 +59,8 @@ struct xkcp_param {
 	int 	nc; 			    // no congestion
 	int		loss_ctrl;		    // loss-driven AIMD send window (1=on)
 	int		pacing;			    // pacing: max KCP segments per flush tick (0=off)
+	int		fastlimit;		    // fast resend limit (default 5, 0=unlimited)
+	int		dead_link;		    // dead link threshold (default 50)
 	int		fec;			    // fec enable (1=frame all datagrams)
 	int 	sock_buf;		    // sockbuf
 	int 	keepalive;		    // keepalive ping interval (seconds)
