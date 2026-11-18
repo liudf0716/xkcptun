@@ -36,6 +36,9 @@
 #include "xkcp_mon.h"
 #include "xkcp_util.h"
 #include "xkcp_config.h"
+#include "udp_proxy.h"
+#include "udp_server.h"
+#include "version.h"
 #include "debug.h"
 #include "jwHash.h"
 
@@ -48,8 +51,12 @@ struct user_spy_cmd {
 
 static void get_client_list(struct bufferevent *bev, void *ctx, const char *arg);
 static void get_client_status(struct bufferevent *bev, void *ctx, const char *arg);
+static void get_client_json(struct bufferevent *bev, void *ctx, const char *arg);
+
 static void get_server_list(struct bufferevent *bev, void *ctx, const char *arg);
 static void get_server_status(struct bufferevent *bev, void *ctx, const char *arg);
+static void get_server_json(struct bufferevent *bev, void *ctx, const char *arg);
+
 static void xkcp_mon_read_cb(struct bufferevent *bev, void *ctx);
 static void xkcp_mon_write_cb(struct bufferevent *bev, void *ctx);
 static void xkcp_mon_event_cb(struct bufferevent *bev, short what, void *ctx);
@@ -57,6 +64,8 @@ static void xkcp_mon_event_cb(struct bufferevent *bev, short what, void *ctx);
 struct user_spy_cmd client_cmd[] = {
 	{"list", get_client_list},
 	{"status", get_client_status},
+	{"json", get_client_json},
+	{"stats", get_client_json},
 	{NULL, NULL}
 };
 
@@ -64,6 +73,8 @@ struct user_spy_cmd server_cmd[] = {
 	{"list", get_server_list},
 	{"status", get_server_status},
 	{"client", get_server_list},
+	{"json", get_server_json},
+	{"stats", get_server_json},
 	{NULL, NULL}
 };
 
@@ -78,21 +89,26 @@ static void get_client_list(struct bufferevent *bev, void *ctx, const char *arg)
 	evbuffer_add_printf(output, "xkcptun client tunnels (%d total):\n", mgr->num_tunnels);
 	struct xkcp_tunnel *t;
 	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
+		xkcp_calc_tunnel_rates(t);
 		int is_udp = (t->param.proto && strcmp(t->param.proto, "udp") == 0);
 		int conns = is_udp ? get_queue_size(&t->udp_client_sessions)
 				   : get_task_list_size(&t->client_task_list);
 		const char *proto_tag = is_udp ? " (UDP)" : "";
+		char in_str[32] = {0}, out_str[32] = {0};
+		xkcp_human_bytes(t->bytes_in, in_str, sizeof(in_str));
+		xkcp_human_bytes(t->bytes_out, out_str, sizeof(out_str));
+
 		if (t->param.dynamic_target && t->param.target_port > 0) {
-			evbuffer_add_printf(output, "  - [%s]%s :%d -> %s:%d -> Target %s:%d (mode: %s, fec: %d, conns: %d)\n",
+			evbuffer_add_printf(output, "  - [%s]%s :%d -> %s:%d -> Target %s:%d (mode: %s, fec: %d, conns: %d, total: %u, in: %s, out: %s)\n",
 					    t->name, proto_tag, t->param.local_port, t->param.remote_addr,
 					    t->param.remote_port, t->param.target_addr ? t->param.target_addr : "127.0.0.1",
 					    t->param.target_port, t->param.mode ? t->param.mode : "fast3",
-					    t->param.fec, conns);
+					    t->param.fec, conns, t->total_conns, in_str, out_str);
 		} else {
-			evbuffer_add_printf(output, "  - [%s]%s :%d -> %s:%d (mode: %s, fec: %d, conns: %d)\n",
+			evbuffer_add_printf(output, "  - [%s]%s :%d -> %s:%d (mode: %s, fec: %d, conns: %d, total: %u, in: %s, out: %s)\n",
 					    t->name, proto_tag, t->param.local_port, t->param.remote_addr,
 					    t->param.remote_port, t->param.mode ? t->param.mode : "fast3",
-					    t->param.fec, conns);
+					    t->param.fec, conns, t->total_conns, in_str, out_str);
 		}
 	}
 }
@@ -108,10 +124,166 @@ static void get_client_status(struct bufferevent *bev, void *ctx, const char *ar
 	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
 		if (arg && strlen(arg) > 0 && strcmp(arg, t->name) != 0)
 			continue;
-		evbuffer_add_printf(output, "tunnel [%s] (: %d -> %s:%d):\n",
-				    t->name, t->param.local_port, t->param.remote_addr, t->param.remote_port);
-		dump_task_list(&t->client_task_list, bev);
+		xkcp_calc_tunnel_rates(t);
+		int is_udp = (t->param.proto && strcmp(t->param.proto, "udp") == 0);
+		char in_str[32] = {0}, out_str[32] = {0};
+		xkcp_human_bytes(t->bytes_in, in_str, sizeof(in_str));
+		xkcp_human_bytes(t->bytes_out, out_str, sizeof(out_str));
+
+		evbuffer_add_printf(output, "tunnel [%s]%s (: %d -> %s:%d) [total: %u, in: %s, out: %s]:\n",
+				    t->name, is_udp ? " (UDP)" : "",
+				    t->param.local_port, t->param.remote_addr, t->param.remote_port,
+				    t->total_conns, in_str, out_str);
+		if (is_udp) {
+			struct udp_client_session *s;
+			int ucount = 0;
+			uint64_t now_ts = (uint64_t)time(NULL);
+			iqueue_foreach(s, &t->udp_client_sessions, struct udp_client_session, node) {
+				ucount++;
+				uint64_t uptime = (now_ts >= s->create_time && s->create_time > 0) ? (now_ts - s->create_time) : 0;
+				char sin_str[32] = {0}, sout_str[32] = {0};
+				char c_ip[32] = {0};
+				inet_ntop(AF_INET, &s->client_sa.sin_addr, c_ip, sizeof(c_ip));
+				xkcp_human_bytes(s->bytes_in, sin_str, sizeof(sin_str));
+				xkcp_human_bytes(s->bytes_out, sout_str, sizeof(sout_str));
+				evbuffer_add_printf(output, "\t[%d] session [%u] %s:%u -> [%s]:[%u] (in: %s, out: %s, age: %llus)\n",
+						    ucount, s->session_id, c_ip, ntohs(s->client_sa.sin_port),
+						    s->target_host[0] ? s->target_host : (t->param.target_addr ? t->param.target_addr : "127.0.0.1"),
+						    s->target_port > 0 ? s->target_port : (uint16_t)t->param.target_port,
+						    sin_str, sout_str, (unsigned long long)uptime);
+			}
+			if (ucount == 0)
+				evbuffer_add_printf(output, "\tno active connections\n");
+		} else {
+			dump_task_list(&t->client_task_list, bev);
+		}
 	}
+}
+
+static void get_client_json(struct bufferevent *bev, void *ctx, const char *arg)
+{
+	(void)arg;
+	struct xkcp_manager *mgr = ctx;
+	struct evbuffer *output = bufferevent_get_output(bev);
+	if (!mgr) return;
+
+	uint64_t total_in = 0, total_out = 0;
+	uint32_t total_conns_all = 0, active_conns_all = 0;
+	uint32_t total_rx_rate = 0, total_tx_rate = 0;
+
+	struct xkcp_tunnel *t;
+	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
+		xkcp_calc_tunnel_rates(t);
+		total_in += t->bytes_in;
+		total_out += t->bytes_out;
+		total_conns_all += t->total_conns;
+		total_rx_rate += t->rx_rate_bps;
+		total_tx_rate += t->tx_rate_bps;
+		int is_udp = (t->param.proto && strcmp(t->param.proto, "udp") == 0);
+		active_conns_all += is_udp ? get_queue_size(&t->udp_client_sessions)
+					   : get_task_list_size(&t->client_task_list);
+	}
+
+	evbuffer_add_printf(output, "{\n");
+	evbuffer_add_printf(output, "  \"role\": \"client\",\n");
+	evbuffer_add_printf(output, "  \"version\": \"%s\",\n", VERSION);
+	evbuffer_add_printf(output, "  \"num_tunnels\": %d,\n", mgr->num_tunnels);
+	evbuffer_add_printf(output, "  \"total_conns\": %u,\n", total_conns_all);
+	evbuffer_add_printf(output, "  \"active_conns\": %u,\n", active_conns_all);
+	evbuffer_add_printf(output, "  \"bytes_in\": %llu,\n", (unsigned long long)total_in);
+	evbuffer_add_printf(output, "  \"bytes_out\": %llu,\n", (unsigned long long)total_out);
+	evbuffer_add_printf(output, "  \"rx_rate_bps\": %u,\n", total_rx_rate);
+	evbuffer_add_printf(output, "  \"tx_rate_bps\": %u,\n", total_tx_rate);
+	evbuffer_add_printf(output, "  \"tunnels\": [\n");
+
+	int t_idx = 0;
+	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
+		if (t_idx > 0) evbuffer_add_printf(output, ",\n");
+		t_idx++;
+
+		int is_udp = (t->param.proto && strcmp(t->param.proto, "udp") == 0);
+		int conns = is_udp ? get_queue_size(&t->udp_client_sessions)
+				   : get_task_list_size(&t->client_task_list);
+		const char *ptype = is_udp ? "forward" : (t->param.proxy_type ? t->param.proxy_type : (t->param.target_addr ? "forward" : "redir"));
+
+		evbuffer_add_printf(output, "    {\n");
+		evbuffer_add_printf(output, "      \"name\": \"%s\",\n", t->name);
+		evbuffer_add_printf(output, "      \"proto\": \"%s\",\n", is_udp ? "udp" : "tcp");
+		evbuffer_add_printf(output, "      \"proxy_type\": \"%s\",\n", ptype);
+		evbuffer_add_printf(output, "      \"local_port\": %d,\n", t->param.local_port);
+		evbuffer_add_printf(output, "      \"remote_addr\": \"%s\",\n", t->param.remote_addr ? t->param.remote_addr : "");
+		evbuffer_add_printf(output, "      \"remote_port\": %d,\n", t->param.remote_port);
+		evbuffer_add_printf(output, "      \"target_addr\": \"%s\",\n", t->param.target_addr ? t->param.target_addr : "");
+		evbuffer_add_printf(output, "      \"target_port\": %d,\n", t->param.target_port);
+		evbuffer_add_printf(output, "      \"mode\": \"%s\",\n", t->param.mode ? t->param.mode : "fast3");
+		evbuffer_add_printf(output, "      \"fec\": %d,\n", t->param.fec);
+		evbuffer_add_printf(output, "      \"total_conns\": %u,\n", t->total_conns);
+		evbuffer_add_printf(output, "      \"active_conns\": %d,\n", conns);
+		evbuffer_add_printf(output, "      \"bytes_in\": %llu,\n", (unsigned long long)t->bytes_in);
+		evbuffer_add_printf(output, "      \"bytes_out\": %llu,\n", (unsigned long long)t->bytes_out);
+		evbuffer_add_printf(output, "      \"rx_rate_bps\": %u,\n", t->rx_rate_bps);
+		evbuffer_add_printf(output, "      \"tx_rate_bps\": %u,\n", t->tx_rate_bps);
+		evbuffer_add_printf(output, "      \"sessions\": [\n");
+
+		uint64_t now_ts = (uint64_t)time(NULL);
+		int s_idx = 0;
+		if (is_udp) {
+			struct udp_client_session *s;
+			iqueue_foreach(s, &t->udp_client_sessions, struct udp_client_session, node) {
+				if (s_idx > 0) evbuffer_add_printf(output, ",\n");
+				s_idx++;
+				uint64_t uptime = (now_ts >= s->create_time && s->create_time > 0) ? (now_ts - s->create_time) : 0;
+				char c_ip[32] = {0};
+				inet_ntop(AF_INET, &s->client_sa.sin_addr, c_ip, sizeof(c_ip));
+				const char *th = s->target_host[0] ? s->target_host : (t->param.target_addr ? t->param.target_addr : "127.0.0.1");
+				uint16_t tp = s->target_port > 0 ? s->target_port : (uint16_t)t->param.target_port;
+				evbuffer_add_printf(output, "        {\n");
+				evbuffer_add_printf(output, "          \"id\": %u,\n", s->session_id);
+				evbuffer_add_printf(output, "          \"proto\": \"udp\",\n");
+				evbuffer_add_printf(output, "          \"client_host\": \"%s\",\n", c_ip);
+				evbuffer_add_printf(output, "          \"client_port\": %u,\n", ntohs(s->client_sa.sin_port));
+				evbuffer_add_printf(output, "          \"target_host\": \"%s\",\n", th);
+				evbuffer_add_printf(output, "          \"target_port\": %u,\n", tp);
+				evbuffer_add_printf(output, "          \"uptime\": %llu,\n", (unsigned long long)uptime);
+				evbuffer_add_printf(output, "          \"bytes_in\": %llu,\n", (unsigned long long)s->bytes_in);
+				evbuffer_add_printf(output, "          \"bytes_out\": %llu,\n", (unsigned long long)s->bytes_out);
+				evbuffer_add_printf(output, "          \"rx_rate_bps\": 0,\n");
+				evbuffer_add_printf(output, "          \"tx_rate_bps\": 0,\n");
+				evbuffer_add_printf(output, "          \"rtt_ms\": 0\n");
+				evbuffer_add_printf(output, "        }");
+			}
+		} else {
+			struct xkcp_task *task;
+			iqueue_foreach(task, &t->client_task_list, xkcp_task_type, head) {
+				if (s_idx > 0) evbuffer_add_printf(output, ",\n");
+				s_idx++;
+				xkcp_calc_task_rates(task);
+				uint64_t uptime = (now_ts >= task->create_time && task->create_time > 0) ? (now_ts - task->create_time) : 0;
+				uint32_t rtt = task->kcp ? (uint32_t)task->kcp->rx_srtt : 0;
+				uint32_t rto = task->kcp ? (uint32_t)task->kcp->rx_rto : 0;
+				const char *chost = task->client_host[0] ? task->client_host : "127.0.0.1";
+				evbuffer_add_printf(output, "        {\n");
+				evbuffer_add_printf(output, "          \"conv\": %u,\n", task->conv);
+				evbuffer_add_printf(output, "          \"proto\": \"tcp\",\n");
+				evbuffer_add_printf(output, "          \"client_host\": \"%s\",\n", chost);
+				evbuffer_add_printf(output, "          \"client_port\": %u,\n", task->client_port);
+				evbuffer_add_printf(output, "          \"target_host\": \"%s\",\n", task->target_host);
+				evbuffer_add_printf(output, "          \"target_port\": %u,\n", task->target_port);
+				evbuffer_add_printf(output, "          \"uptime\": %llu,\n", (unsigned long long)uptime);
+				evbuffer_add_printf(output, "          \"bytes_in\": %llu,\n", (unsigned long long)task->bytes_in);
+				evbuffer_add_printf(output, "          \"bytes_out\": %llu,\n", (unsigned long long)task->bytes_out);
+				evbuffer_add_printf(output, "          \"rx_rate_bps\": %u,\n", task->rx_rate_bps);
+				evbuffer_add_printf(output, "          \"tx_rate_bps\": %u,\n", task->tx_rate_bps);
+				evbuffer_add_printf(output, "          \"rtt_ms\": %u,\n", rtt);
+				evbuffer_add_printf(output, "          \"rto_ms\": %u\n", rto);
+				evbuffer_add_printf(output, "        }");
+			}
+		}
+		evbuffer_add_printf(output, "\n      ]\n");
+		evbuffer_add_printf(output, "    }");
+	}
+	evbuffer_add_printf(output, "\n  ]\n");
+	evbuffer_add_printf(output, "}\n");
 }
 
 static void get_server_list(struct bufferevent *bev, void *ctx, const char *arg)
@@ -125,6 +297,7 @@ static void get_server_list(struct bufferevent *bev, void *ctx, const char *arg)
 	evbuffer_add_printf(output, "xkcptun server tunnels (%d total):\n", mgr->num_tunnels);
 	struct xkcp_tunnel *t;
 	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
+		xkcp_calc_tunnel_rates(t);
 		int total_clients = 0;
 		if (t->server_xkcp_hash) {
 			for (int i = 0; i < t->server_xkcp_hash->buckets; i++) {
@@ -135,10 +308,14 @@ static void get_server_list(struct bufferevent *bev, void *ctx, const char *arg)
 				}
 			}
 		}
-		evbuffer_add_printf(output, "  - [%s] UDP :%d -> TCP %s:%d (mode: %s, fec: %d, peers: %d)\n",
+		char in_str[32] = {0}, out_str[32] = {0};
+		xkcp_human_bytes(t->bytes_in, in_str, sizeof(in_str));
+		xkcp_human_bytes(t->bytes_out, out_str, sizeof(out_str));
+
+		evbuffer_add_printf(output, "  - [%s] UDP :%d -> TCP %s:%d (mode: %s, fec: %d, peers: %d, total: %u, in: %s, out: %s)\n",
 				    t->name, t->param.local_port, t->param.remote_addr,
 				    t->param.remote_port, t->param.mode ? t->param.mode : "fast3",
-				    t->param.fec, total_clients);
+				    t->param.fec, total_clients, t->total_conns, in_str, out_str);
 	}
 }
 
@@ -153,9 +330,14 @@ static void get_server_status(struct bufferevent *bev, void *ctx, const char *ar
 	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
 		if (arg && strlen(arg) > 0 && strcmp(arg, t->name) != 0)
 			continue;
+		xkcp_calc_tunnel_rates(t);
+		char in_str[32] = {0}, out_str[32] = {0};
+		xkcp_human_bytes(t->bytes_in, in_str, sizeof(in_str));
+		xkcp_human_bytes(t->bytes_out, out_str, sizeof(out_str));
 
-		evbuffer_add_printf(output, "tunnel [%s] (UDP :%d -> TCP %s:%d):\n",
-				    t->name, t->param.local_port, t->param.remote_addr, t->param.remote_port);
+		evbuffer_add_printf(output, "tunnel [%s] (UDP :%d -> TCP %s:%d) [total: %u, in: %s, out: %s]:\n",
+				    t->name, t->param.local_port, t->param.remote_addr, t->param.remote_port,
+				    t->total_conns, in_str, out_str);
 		if (t->server_xkcp_hash) {
 			for (int i = 0; i < t->server_xkcp_hash->buckets; i++) {
 				jwHashEntry *entry = t->server_xkcp_hash->bucket[i];
@@ -169,18 +351,156 @@ static void get_server_status(struct bufferevent *bev, void *ctx, const char *ar
 	}
 }
 
+static void get_server_json(struct bufferevent *bev, void *ctx, const char *arg)
+{
+	(void)arg;
+	struct xkcp_manager *mgr = ctx;
+	struct evbuffer *output = bufferevent_get_output(bev);
+	if (!mgr) return;
+
+	uint64_t total_in = 0, total_out = 0;
+	uint32_t total_conns_all = 0, active_conns_all = 0;
+	uint32_t total_rx_rate = 0, total_tx_rate = 0;
+
+	struct xkcp_tunnel *t;
+	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
+		xkcp_calc_tunnel_rates(t);
+		total_in += t->bytes_in;
+		total_out += t->bytes_out;
+		total_conns_all += t->total_conns;
+		total_rx_rate += t->rx_rate_bps;
+		total_tx_rate += t->tx_rate_bps;
+		if (t->server_xkcp_hash) {
+			for (int i = 0; i < t->server_xkcp_hash->buckets; i++) {
+				jwHashEntry *entry = t->server_xkcp_hash->bucket[i];
+				while (entry) {
+					active_conns_all += get_task_list_size((iqueue_head *)entry->value.ptrValue);
+					entry = entry->next;
+				}
+			}
+		}
+		active_conns_all += get_queue_size(&t->udp_server_sessions);
+	}
+
+	evbuffer_add_printf(output, "{\n");
+	evbuffer_add_printf(output, "  \"role\": \"server\",\n");
+	evbuffer_add_printf(output, "  \"version\": \"%s\",\n", VERSION);
+	evbuffer_add_printf(output, "  \"num_tunnels\": %d,\n", mgr->num_tunnels);
+	evbuffer_add_printf(output, "  \"total_conns\": %u,\n", total_conns_all);
+	evbuffer_add_printf(output, "  \"active_conns\": %u,\n", active_conns_all);
+	evbuffer_add_printf(output, "  \"bytes_in\": %llu,\n", (unsigned long long)total_in);
+	evbuffer_add_printf(output, "  \"bytes_out\": %llu,\n", (unsigned long long)total_out);
+	evbuffer_add_printf(output, "  \"rx_rate_bps\": %u,\n", total_rx_rate);
+	evbuffer_add_printf(output, "  \"tx_rate_bps\": %u,\n", total_tx_rate);
+	evbuffer_add_printf(output, "  \"tunnels\": [\n");
+
+	int t_idx = 0;
+	iqueue_foreach(t, &mgr->tunnel_list, struct xkcp_tunnel, node) {
+		if (t_idx > 0) evbuffer_add_printf(output, ",\n");
+		t_idx++;
+
+		int active_conns = 0;
+		if (t->server_xkcp_hash) {
+			for (int i = 0; i < t->server_xkcp_hash->buckets; i++) {
+				jwHashEntry *entry = t->server_xkcp_hash->bucket[i];
+				while (entry) {
+					active_conns += get_task_list_size((iqueue_head *)entry->value.ptrValue);
+					entry = entry->next;
+				}
+			}
+		}
+		active_conns += get_queue_size(&t->udp_server_sessions);
+
+		evbuffer_add_printf(output, "    {\n");
+		evbuffer_add_printf(output, "      \"name\": \"%s\",\n", t->name);
+		evbuffer_add_printf(output, "      \"local_port\": %d,\n", t->param.local_port);
+		evbuffer_add_printf(output, "      \"remote_addr\": \"%s\",\n", t->param.remote_addr ? t->param.remote_addr : "");
+		evbuffer_add_printf(output, "      \"remote_port\": %d,\n", t->param.remote_port);
+		evbuffer_add_printf(output, "      \"mode\": \"%s\",\n", t->param.mode ? t->param.mode : "fast3");
+		evbuffer_add_printf(output, "      \"fec\": %d,\n", t->param.fec);
+		evbuffer_add_printf(output, "      \"total_conns\": %u,\n", t->total_conns);
+		evbuffer_add_printf(output, "      \"active_conns\": %d,\n", active_conns);
+		evbuffer_add_printf(output, "      \"bytes_in\": %llu,\n", (unsigned long long)t->bytes_in);
+		evbuffer_add_printf(output, "      \"bytes_out\": %llu,\n", (unsigned long long)t->bytes_out);
+		evbuffer_add_printf(output, "      \"rx_rate_bps\": %u,\n", t->rx_rate_bps);
+		evbuffer_add_printf(output, "      \"tx_rate_bps\": %u,\n", t->tx_rate_bps);
+		evbuffer_add_printf(output, "      \"sessions\": [\n");
+
+		uint64_t now_ts = (uint64_t)time(NULL);
+		int s_idx = 0;
+		if (t->server_xkcp_hash) {
+			for (int i = 0; i < t->server_xkcp_hash->buckets; i++) {
+				jwHashEntry *entry = t->server_xkcp_hash->bucket[i];
+				while (entry) {
+					iqueue_head *task_list = (iqueue_head *)entry->value.ptrValue;
+					struct xkcp_task *task;
+					iqueue_foreach(task, task_list, xkcp_task_type, head) {
+						if (s_idx > 0) evbuffer_add_printf(output, ",\n");
+						s_idx++;
+						xkcp_calc_task_rates(task);
+						uint64_t uptime = (now_ts >= task->create_time && task->create_time > 0) ? (now_ts - task->create_time) : 0;
+						uint32_t rtt = task->kcp ? (uint32_t)task->kcp->rx_srtt : 0;
+						uint32_t rto = task->kcp ? (uint32_t)task->kcp->rx_rto : 0;
+						const char *chost = task->client_host[0] ? task->client_host : entry->key.strValue;
+						evbuffer_add_printf(output, "        {\n");
+						evbuffer_add_printf(output, "          \"conv\": %u,\n", task->conv);
+						evbuffer_add_printf(output, "          \"proto\": \"tcp\",\n");
+						evbuffer_add_printf(output, "          \"client_host\": \"%s\",\n", chost);
+						evbuffer_add_printf(output, "          \"client_port\": %u,\n", task->client_port);
+						evbuffer_add_printf(output, "          \"target_host\": \"%s\",\n", task->target_host);
+						evbuffer_add_printf(output, "          \"target_port\": %u,\n", task->target_port);
+						evbuffer_add_printf(output, "          \"uptime\": %llu,\n", (unsigned long long)uptime);
+						evbuffer_add_printf(output, "          \"bytes_in\": %llu,\n", (unsigned long long)task->bytes_in);
+						evbuffer_add_printf(output, "          \"bytes_out\": %llu,\n", (unsigned long long)task->bytes_out);
+						evbuffer_add_printf(output, "          \"rx_rate_bps\": %u,\n", task->rx_rate_bps);
+						evbuffer_add_printf(output, "          \"tx_rate_bps\": %u,\n", task->tx_rate_bps);
+						evbuffer_add_printf(output, "          \"rtt_ms\": %u,\n", rtt);
+						evbuffer_add_printf(output, "          \"rto_ms\": %u\n", rto);
+						evbuffer_add_printf(output, "        }");
+					}
+					entry = entry->next;
+				}
+			}
+		}
+		evbuffer_add_printf(output, "\n      ]\n");
+		evbuffer_add_printf(output, "    }");
+	}
+	evbuffer_add_printf(output, "\n  ]\n");
+	evbuffer_add_printf(output, "}\n");
+}
+
 static void process_user_cmd(struct bufferevent *bev, const char *cmd_line, void *ctx)
 {
 	struct xkcp_manager *mgr = ctx;
 	char cmd[64] = {0};
 	char arg[128] = {0};
+	int is_http = 0;
 
-	sscanf(cmd_line, "%63s %127s", cmd, arg);
+	if (strncasecmp(cmd_line, "GET ", 4) == 0) {
+		is_http = 1;
+		char path[128] = {0};
+		sscanf(cmd_line + 4, "%127s", path);
+		if (strstr(path, "json") || strstr(path, "stats")) {
+			strcpy(cmd, "json");
+		} else if (strstr(path, "status")) {
+			strcpy(cmd, "status");
+		} else {
+			strcpy(cmd, "list");
+		}
+	} else {
+		sscanf(cmd_line, "%63s %127s", cmd, arg);
+	}
 
 	struct user_spy_cmd *table = (mgr && mgr->is_server) ? server_cmd : client_cmd;
 
 	for (int i = 0; table[i].command != NULL; i++) {
 		if (strcmp(cmd, table[i].command) == 0) {
+			if (is_http) {
+				int is_json = (strcmp(cmd, "json") == 0 || strcmp(cmd, "stats") == 0);
+				evbuffer_add_printf(bufferevent_get_output(bev),
+					"HTTP/1.1 200 OK\r\nContent-Type: %s; charset=utf-8\r\nConnection: close\r\n\r\n",
+					is_json ? "application/json" : "text/plain");
+			}
 			table[i].cmd_process(bev, ctx, arg);
 			bufferevent_setcb(bev, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, ctx);
 			bufferevent_enable(bev, EV_WRITE);
@@ -190,6 +510,10 @@ static void process_user_cmd(struct bufferevent *bev, const char *cmd_line, void
 
 	/* Default fallback for bare "status" or empty command */
 	if (table[0].cmd_process) {
+		if (is_http) {
+			evbuffer_add_printf(bufferevent_get_output(bev),
+				"HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n");
+		}
 		table[0].cmd_process(bev, ctx, arg);
 		bufferevent_setcb(bev, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, ctx);
 		bufferevent_enable(bev, EV_WRITE);

@@ -15,13 +15,6 @@
 #include "xkcp_udp.h"
 #include "debug.h"
 
-struct udp_client_session {
-	iqueue_head node;
-	uint32_t session_id;
-	struct sockaddr_in client_sa;
-	IUINT32 last_active;
-};
-
 static uint32_t g_client_session_seq = 1;
 
 static struct udp_client_session *find_client_session_by_sa(struct xkcp_tunnel *tunnel,
@@ -67,6 +60,9 @@ static void udp_proxy_read_cb(evutil_socket_t fd, short what, void *arg)
 		if (nrecv <= 0)
 			break;
 
+		const char *target_host = tunnel->param.target_addr ? tunnel->param.target_addr : "127.0.0.1";
+		uint16_t target_port = tunnel->param.target_port > 0 ? (uint16_t)tunnel->param.target_port : 53;
+
 		struct udp_client_session *session = find_client_session_by_sa(tunnel, &client_sa);
 		if (!session) {
 			session = calloc(1, sizeof(*session));
@@ -74,15 +70,15 @@ static void udp_proxy_read_cb(evutil_socket_t fd, short what, void *arg)
 			session->session_id = g_client_session_seq++;
 			if (g_client_session_seq == 0) g_client_session_seq = 1;
 			session->client_sa = client_sa;
+			session->create_time = (uint64_t)time(NULL);
 			session->last_active = iclock();
+			snprintf(session->target_host, sizeof(session->target_host), "%s", target_host);
+			session->target_port = target_port;
 			iqueue_add(&session->node, &tunnel->udp_client_sessions);
 			tunnel->total_conns++;
 		} else {
 			session->last_active = iclock();
 		}
-
-		const char *target_host = tunnel->param.target_addr ? tunnel->param.target_addr : "127.0.0.1";
-		uint16_t target_port = tunnel->param.target_port > 0 ? (uint16_t)tunnel->param.target_port : 53;
 
 		int enc_len = xkcp_udp_encode_req(enc_buf, sizeof(enc_buf),
 						  session->session_id,
@@ -92,6 +88,7 @@ static void udp_proxy_read_cb(evutil_socket_t fd, short what, void *arg)
 		if (enc_len > 0) {
 			xkcp_send_tunnel_packet(tunnel->xkcp_fd, &tunnel->client_proxy_param.sockaddr,
 						tunnel->client_fec, enc_buf, enc_len, tunnel);
+			session->bytes_in += nrecv;
 			tunnel->bytes_in += nrecv;
 		}
 	}
@@ -178,6 +175,7 @@ void udp_proxy_handle_server_packet(struct xkcp_tunnel *tunnel, const char *buf,
 		sendto(tunnel->udp_local_fd, payload, payload_len, 0,
 		       (struct sockaddr *)&session->client_sa, sizeof(session->client_sa));
 		session->last_active = iclock();
+		session->bytes_out += payload_len;
 		tunnel->bytes_out += payload_len;
 	}
 }

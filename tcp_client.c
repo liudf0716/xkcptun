@@ -393,7 +393,7 @@ void tcp_client_read_cb(struct bufferevent *bev, void *ctx)
 	ikcpcb *kcp = task->kcp;
 	if (!kcp)
 		return;
-	xkcp_tcp_read_cb(bev, kcp);
+	xkcp_tcp_read_cb(bev, task);
 	task->last_keepalive = task->last_active = task->last_recv = iclock();
 	xkcp_forward_data(task);
 	return;

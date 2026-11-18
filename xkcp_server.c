@@ -235,6 +235,12 @@ static struct xkcp_task *create_new_server_session(struct xkcp_tunnel *tunnel, c
 	task->pending_buf = NULL;
 	task->egress_state = XKCP_EGRESS_DIRECT;
 
+	/* Metrics & Session tracking */
+	tunnel->total_conns++;
+	inet_ntop(AF_INET, &from->sin_addr, task->client_host, sizeof(task->client_host));
+	task->client_port = ntohs(from->sin_port);
+	task->create_time = (uint64_t)time(NULL);
+
 	add_task_tail(task, task_list);
 	debug(LOG_INFO, "[%s] new session conv [%u] created (awaiting dynamic target / data)",
 	      tunnel->name, conv);

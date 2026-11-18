@@ -80,6 +80,18 @@ struct xkcp_task {
 	int					socks5_state;	/* 0=none, 1=greeting, 2=request, 3=connected */
 	struct evbuffer		*pending_buf;	/* buffered data awaiting egress proxy or fallback direct */
 	int					egress_state;	/* server egress proxy state */
+
+	/* Metrics & Statistics */
+	char				client_host[64];
+	uint16_t			client_port;
+	uint64_t			create_time;	/* epoch seconds */
+	uint64_t			bytes_in;		/* bytes from TCP/app into KCP */
+	uint64_t			bytes_out;		/* bytes from KCP to TCP/app */
+	uint64_t			last_calc_time;	/* iclock64 timestamp ms */
+	uint64_t			last_bytes_in;
+	uint64_t			last_bytes_out;
+	uint32_t			rx_rate_bps;
+	uint32_t			tx_rate_bps;
 };
 
 enum {
@@ -134,6 +146,11 @@ struct xkcp_tunnel {
 	uint64_t			bytes_in;
 	uint64_t			bytes_out;
 	uint32_t			total_conns;
+	uint64_t			last_calc_time;	/* iclock64 timestamp ms */
+	uint64_t			last_bytes_in;
+	uint64_t			last_bytes_out;
+	uint32_t			rx_rate_bps;
+	uint32_t			tx_rate_bps;
 
 	struct xkcp_manager	*mgr;			/* parent manager */
 };
@@ -180,7 +197,11 @@ void xkcp_apply_sockbuf_param(int fd, struct xkcp_param *param);
  * caller owns it (server sessions) so it can be freed */
 void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task);
 
-void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp);
+void xkcp_tcp_read_cb(struct bufferevent *bev, struct xkcp_task *task);
+
+void xkcp_calc_tunnel_rates(struct xkcp_tunnel *t);
+void xkcp_calc_task_rates(struct xkcp_task *task);
+void xkcp_human_bytes(uint64_t bytes, char *out, size_t outlen);
 
 /* pump KCP -> TCP for one task; returns 0 if the task was freed */
 int xkcp_forward_data(struct xkcp_task *task);

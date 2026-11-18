@@ -73,18 +73,20 @@ static void readcb(struct bufferevent *bev, void *ctx)
 
 static void usage(const char *prog)
 {
-	printf("Usage: %s [-h <host>] [-s|-c|-p <port>] [-t <cmd>] [-m <param>]\n", prog);
+	printf("Usage: %s [-h <host>] [-s|-c|-p <port>] [-j] [-t <cmd>] [-m <param>]\n", prog);
 	printf("       %s [-h <host>] [-s|-c] <cmd> [param]\n", prog);
 	printf("\nOptions:\n");
 	printf("  -h <host>    Target host address (default: 127.0.0.1)\n");
 	printf("  -c           Query xkcp_client (default port: 9086)\n");
 	printf("  -s           Query xkcp_server (default port: 9087)\n");
 	printf("  -p <port>    Custom monitor port\n");
-	printf("  -t <cmd>     Command to execute (e.g. list, status)\n");
+	printf("  -j           Output JSON format statistics (equivalent to cmd 'json')\n");
+	printf("  -t <cmd>     Command to execute (e.g. list, status, json)\n");
 	printf("  -m <param>   Parameter for command (e.g. tunnel name)\n");
 	printf("\nCommands:\n");
 	printf("  list         List all managed tunnels\n");
 	printf("  status [name] Show active connections for all tunnels or a specific tunnel\n");
+	printf("  json         Output complete runtime statistics in JSON format\n");
 }
 
 int main(int argc, char **argv)
@@ -96,7 +98,7 @@ int main(int argc, char **argv)
 	char *cmd = NULL, *addr = NULL, *param = NULL;
 	int port = 0, opt;
 
-	while ((opt = getopt(argc, argv, "h:scp:t:m:")) != -1) {
+	while ((opt = getopt(argc, argv, "h:scjp:t:m:")) != -1) {
 		switch (opt) {
 		case 'h':
 			addr = strdup(optarg);
@@ -106,6 +108,10 @@ int main(int argc, char **argv)
 			break;
 		case 'c':
 			if (port == 0) port = 9086;
+			break;
+		case 'j':
+			if (cmd) free(cmd);
+			cmd = strdup("json");
 			break;
 		case 'p':
 			port = atoi(optarg);

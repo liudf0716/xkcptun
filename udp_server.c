@@ -17,19 +17,6 @@
 #include "xkcp_udp.h"
 #include "debug.h"
 
-struct udp_server_session {
-	iqueue_head node;
-	uint32_t session_id;
-	struct sockaddr_in client_sa;
-	struct sockaddr_in target_sa;
-	int target_fd;
-	struct event *target_ev;
-	struct xkcp_tunnel *tunnel;
-	struct fec_conn *fec;
-	int xkcpfd;
-	IUINT32 last_active;
-};
-
 static struct udp_server_session *find_server_session(struct xkcp_tunnel *tunnel,
 						      const struct sockaddr_in *client_sa,
 						      uint32_t session_id)

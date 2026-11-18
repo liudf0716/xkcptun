@@ -70,7 +70,7 @@ tcp_proxy_read_cb(struct bufferevent *bev, void *ctx)
 	struct xkcp_task *task = ctx;
 	if (!task || !task->kcp)
 		return;
-	xkcp_tcp_read_cb(bev, task->kcp);
+	xkcp_tcp_read_cb(bev, task);
 	task->last_keepalive = task->last_active = task->last_recv = iclock();
 	xkcp_forward_data(task);
 }
@@ -325,6 +325,20 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	task->pending_buf = NULL;
 	task->egress_state = XKCP_EGRESS_DIRECT;
 
+	/* Metrics & Session tracking */
+	tunnel->total_conns++;
+	task->create_time = (uint64_t)time(NULL);
+	task->client_host[0] = '\0';
+	task->client_port = 0;
+	struct sockaddr_in client_peer;
+	socklen_t plen = sizeof(client_peer);
+	int has_client_peer = 0;
+	if (getpeername(fd, (struct sockaddr *)&client_peer, &plen) == 0) {
+		inet_ntop(AF_INET, &client_peer.sin_addr, task->client_host, sizeof(task->client_host));
+		task->client_port = ntohs(client_peer.sin_port);
+		has_client_peer = 1;
+	}
+
 	int is_socks5 = (tunnel->param.proxy_type &&
 			 !strcasecmp(tunnel->param.proxy_type, "socks5"));
 	int is_redir = (tunnel->param.proxy_type &&
@@ -349,9 +363,7 @@ tcp_proxy_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		int found = 0;
 #ifdef __linux__
 		/* 1. Try querying xdns_tcp_sessions eBPF map first */
-		struct sockaddr_in client_peer;
-		socklen_t plen = sizeof(client_peer);
-		if (getpeername(fd, (struct sockaddr *)&client_peer, &plen) == 0) {
+		if (has_client_peer) {
 			if (xkcp_lookup_xdns_tcp_session(client_peer.sin_addr, client_peer.sin_port, &orig_dst) == 0) {
 				inet_ntop(AF_INET, &orig_dst.sin_addr, thost, sizeof(thost));
 				tport = ntohs(orig_dst.sin_port);

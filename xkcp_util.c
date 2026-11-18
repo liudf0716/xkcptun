@@ -423,12 +423,81 @@ void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *t
 #define XKCP_SND_QUE_HIGH	256	/* queued KCP segments */
 #define XKCP_SND_QUE_LOW	64
 
+void xkcp_human_bytes(uint64_t bytes, char *out, size_t outlen)
+{
+	if (!out || outlen == 0) return;
+	if (bytes < 1024) {
+		snprintf(out, outlen, "%llu B", (unsigned long long)bytes);
+	} else if (bytes < 1024ULL * 1024) {
+		snprintf(out, outlen, "%.1f KB", (double)bytes / 1024.0);
+	} else if (bytes < 1024ULL * 1024 * 1024) {
+		snprintf(out, outlen, "%.2f MB", (double)bytes / (1024.0 * 1024.0));
+	} else {
+		snprintf(out, outlen, "%.2f GB", (double)bytes / (1024.0 * 1024.0 * 1024.0));
+	}
+}
+
+void xkcp_calc_tunnel_rates(struct xkcp_tunnel *t)
+{
+	if (!t) return;
+	uint64_t now_ms = iclock64();
+	if (t->last_calc_time == 0) {
+		t->last_calc_time = now_ms;
+		t->last_bytes_in = t->bytes_in;
+		t->last_bytes_out = t->bytes_out;
+		t->rx_rate_bps = 0;
+		t->tx_rate_bps = 0;
+		return;
+	}
+	uint64_t diff_ms = (now_ms > t->last_calc_time) ? (now_ms - t->last_calc_time) : 0;
+	if (diff_ms >= 500) {
+		uint64_t in_delta = (t->bytes_in >= t->last_bytes_in) ? (t->bytes_in - t->last_bytes_in) : 0;
+		uint64_t out_delta = (t->bytes_out >= t->last_bytes_out) ? (t->bytes_out - t->last_bytes_out) : 0;
+		uint32_t inst_rx = (uint32_t)((in_delta * 1000) / diff_ms);
+		uint32_t inst_tx = (uint32_t)((out_delta * 1000) / diff_ms);
+		t->rx_rate_bps = (t->rx_rate_bps == 0) ? inst_rx : (t->rx_rate_bps * 3 + inst_rx) / 4;
+		t->tx_rate_bps = (t->tx_rate_bps == 0) ? inst_tx : (t->tx_rate_bps * 3 + inst_tx) / 4;
+		t->last_bytes_in = t->bytes_in;
+		t->last_bytes_out = t->bytes_out;
+		t->last_calc_time = now_ms;
+	}
+}
+
+void xkcp_calc_task_rates(struct xkcp_task *task)
+{
+	if (!task) return;
+	uint64_t now_ms = iclock64();
+	if (task->last_calc_time == 0) {
+		task->last_calc_time = now_ms;
+		task->last_bytes_in = task->bytes_in;
+		task->last_bytes_out = task->bytes_out;
+		task->rx_rate_bps = 0;
+		task->tx_rate_bps = 0;
+		return;
+	}
+	uint64_t diff_ms = (now_ms > task->last_calc_time) ? (now_ms - task->last_calc_time) : 0;
+	if (diff_ms >= 500) {
+		uint64_t in_delta = (task->bytes_in >= task->last_bytes_in) ? (task->bytes_in - task->last_bytes_in) : 0;
+		uint64_t out_delta = (task->bytes_out >= task->last_bytes_out) ? (task->bytes_out - task->last_bytes_out) : 0;
+		uint32_t inst_rx = (uint32_t)((in_delta * 1000) / diff_ms);
+		uint32_t inst_tx = (uint32_t)((out_delta * 1000) / diff_ms);
+		task->rx_rate_bps = (task->rx_rate_bps == 0) ? inst_rx : (task->rx_rate_bps * 3 + inst_rx) / 4;
+		task->tx_rate_bps = (task->tx_rate_bps == 0) ? inst_tx : (task->tx_rate_bps * 3 + inst_tx) / 4;
+		task->last_bytes_in = task->bytes_in;
+		task->last_bytes_out = task->bytes_out;
+		task->last_calc_time = now_ms;
+	}
+}
+
 /* teardown a session when data is in flight but the peer has gone completely
  * silent (no data, no ACKs) for this long */
 #define XKCP_DEAD_LINK_TIMEOUT_MS	30000
 
-void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
+void xkcp_tcp_read_cb(struct bufferevent *bev, struct xkcp_task *task)
 {
+	if (!task || !task->kcp)
+		return;
+	ikcpcb *kcp = task->kcp;
 	char buf[2048];
 	int len, nret;
 	struct evbuffer *input = bufferevent_get_input(bev);
@@ -441,9 +510,15 @@ void xkcp_tcp_read_cb(struct bufferevent *bev, ikcpcb *kcp)
 
 	while ((len = evbuffer_remove(input, buf, sizeof(buf))) > 0) {
 		nret = ikcp_send(kcp, buf, len);
-		if (nret < 0)
+		if (nret < 0) {
 			debug(LOG_INFO, "ikcp_send conv [%u] failed [%d] len [%d]",
 				  kcp->conv, nret, len);
+		} else {
+			task->bytes_in += len;
+			if (task->tunnel) {
+				task->tunnel->bytes_in += len;
+			}
+		}
 		if (kcp->nsnd_que > snd_que_high) {
 			bufferevent_disable(bev, EV_READ);
 			break;
@@ -464,6 +539,8 @@ void xkcp_update_task_list(iqueue_head *task_list, const struct xkcp_param *para
 
 		if (!task->kcp)
 			continue;
+
+		xkcp_calc_task_rates(task);
 
 		/* dead-link teardown: we still have unacked/queued data but the peer
 		 * has sent nothing (not even ACKs) for XKCP_DEAD_LINK_TIMEOUT_MS.
@@ -672,12 +749,15 @@ int xkcp_forward_data(struct xkcp_task *task)
 					return forward_close_session(task);
 				}
 				if (nrecv > hdr_len && task->bev) {
+					int pld = nrecv - hdr_len;
 					if (task->egress_state == XKCP_EGRESS_DIRECT || task->egress_state == XKCP_EGRESS_READY) {
-						evbuffer_add(bufferevent_get_output(task->bev), obuf + hdr_len, nrecv - hdr_len);
+						evbuffer_add(bufferevent_get_output(task->bev), obuf + hdr_len, pld);
 					} else {
 						if (!task->pending_buf) task->pending_buf = evbuffer_new();
-						evbuffer_add(task->pending_buf, obuf + hdr_len, nrecv - hdr_len);
+						evbuffer_add(task->pending_buf, obuf + hdr_len, pld);
 					}
+					task->bytes_out += pld;
+					if (task->tunnel) task->tunnel->bytes_out += pld;
 				}
 			} else if (hdr_len > 0) {
 				debug(LOG_WARNING, "[%s] conv [%u] legacy unauthenticated dynamic header rejected",
@@ -714,6 +794,8 @@ int xkcp_forward_data(struct xkcp_task *task)
 						if (!task->pending_buf) task->pending_buf = evbuffer_new();
 						evbuffer_add(task->pending_buf, obuf, nrecv);
 					}
+					task->bytes_out += nrecv;
+					if (task->tunnel) task->tunnel->bytes_out += nrecv;
 				}
 			}
 			free(heapbuf);
@@ -737,9 +819,13 @@ int xkcp_forward_data(struct xkcp_task *task)
 				if (!task->pending_buf) task->pending_buf = evbuffer_new();
 				evbuffer_add(task->pending_buf, obuf, nrecv);
 			}
+			task->bytes_out += nrecv;
+			if (task->tunnel) task->tunnel->bytes_out += nrecv;
 		} else if (task->user_owned && task->target_port > 0) {
 			if (!task->pending_buf) task->pending_buf = evbuffer_new();
 			evbuffer_add(task->pending_buf, obuf, nrecv);
+			task->bytes_out += nrecv;
+			if (task->tunnel) task->tunnel->bytes_out += nrecv;
 		}
 
 		free(heapbuf);
@@ -778,13 +864,26 @@ void dump_task_list(iqueue_head *task_list, struct bufferevent *bev)
 	struct xkcp_task *task;
 	struct evbuffer *output = bufferevent_get_output(bev);
 	int count = 0;
+	uint64_t now_ts = (uint64_t)time(NULL);
+
 	iqueue_foreach(task, task_list, xkcp_task_type, head) {
 		count++;
+		uint64_t uptime = (now_ts >= task->create_time && task->create_time > 0) ? (now_ts - task->create_time) : 0;
+		uint32_t rtt = task->kcp ? (uint32_t)task->kcp->rx_srtt : 0;
+		char in_str[32] = {0}, out_str[32] = {0};
+		xkcp_human_bytes(task->bytes_in, in_str, sizeof(in_str));
+		xkcp_human_bytes(task->bytes_out, out_str, sizeof(out_str));
+
+		const char *chost = task->client_host[0] ? task->client_host : "127.0.0.1";
 		if (task->target_port > 0) {
-			evbuffer_add_printf(output, "\t[%d] conv [%u] -> [%s]:[%u]\n",
-					    count, task->conv, task->target_host, task->target_port);
+			evbuffer_add_printf(output, "\t[%d] conv [%u] %s:%u -> [%s]:[%u] (in: %s, out: %s, rtt: %ums, age: %llus)\n",
+					    count, task->conv, chost, task->client_port,
+					    task->target_host, task->target_port,
+					    in_str, out_str, rtt, (unsigned long long)uptime);
 		} else {
-			evbuffer_add_printf(output, "\t[%d] conv [%u]\n", count, task->conv);
+			evbuffer_add_printf(output, "\t[%d] conv [%u] %s:%u (in: %s, out: %s, rtt: %ums, age: %llus)\n",
+					    count, task->conv, chost, task->client_port,
+					    in_str, out_str, rtt, (unsigned long long)uptime);
 		}
 	}
 	if (count == 0)
