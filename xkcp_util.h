@@ -197,6 +197,8 @@ void xkcp_apply_sockbuf_param(int fd, struct xkcp_param *param);
  * caller owns it (server sessions) so it can be freed */
 void *xkcp_tcp_event_cb(struct bufferevent *bev, short what, struct xkcp_task *task);
 
+void xkcp_bev_close_graceful(struct bufferevent *bev);
+
 void xkcp_tcp_read_cb(struct bufferevent *bev, struct xkcp_task *task);
 
 void xkcp_calc_tunnel_rates(struct xkcp_tunnel *t);

@@ -275,7 +275,7 @@ static void udp_pend_drain_cb(evutil_socket_t fd, short what, void *arg)
 	struct evbuffer **p_pend = tunnel ? &tunnel->udp_pend : &g_udp_pend;
 	struct event **p_wev = tunnel ? &tunnel->udp_wev : &g_udp_wev;
 	int *p_active = tunnel ? &tunnel->udp_wev_active : &g_udp_wev_active;
-	char buf[2048];
+	char sbuf[2048];
 
 	(void)what;
 
@@ -285,12 +285,18 @@ static void udp_pend_drain_cb(evutil_socket_t fd, short what, void *arg)
 		struct sockaddr_in sa;
 		uint16_t len;
 		int nret;
+		char *buf = sbuf;
+		char *heapbuf = NULL;
 
 		evbuffer_remove(*p_pend, &sa, sizeof(sa));
 		evbuffer_remove(*p_pend, &len, sizeof(len));
-		if (len > sizeof(buf)) {
-			evbuffer_drain(*p_pend, len);
-			continue;
+		if (len > sizeof(sbuf)) {
+			heapbuf = malloc(len);
+			if (!heapbuf) {
+				evbuffer_drain(*p_pend, len);
+				continue;
+			}
+			buf = heapbuf;
 		}
 		evbuffer_remove(*p_pend, buf, len);
 
@@ -299,8 +305,10 @@ static void udp_pend_drain_cb(evutil_socket_t fd, short what, void *arg)
 			evbuffer_prepend(*p_pend, buf, len);
 			evbuffer_prepend(*p_pend, &len, sizeof(len));
 			evbuffer_prepend(*p_pend, &sa, sizeof(sa));
+			free(heapbuf);
 			return;
 		}
+		free(heapbuf);
 	}
 
 	if (*p_active && *p_wev) {
@@ -637,6 +645,19 @@ static void xkcp_bev_drain_event_cb(struct bufferevent *bev, short what, void *c
 	bufferevent_free(bev);
 }
 
+void xkcp_bev_close_graceful(struct bufferevent *bev)
+{
+	if (!bev)
+		return;
+	struct evbuffer *out = bufferevent_get_output(bev);
+	if (evbuffer_get_length(out) > 0) {
+		bufferevent_disable(bev, EV_READ);
+		bufferevent_setcb(bev, NULL, xkcp_bev_drain_cb, xkcp_bev_drain_event_cb, NULL);
+	} else {
+		bufferevent_free(bev);
+	}
+}
+
 #define XKCP_TCP_OUTBUF_LIMIT	(4 * 1024 * 1024)
 
 /* tear a session down: notify peer, unlink and release everything.
@@ -704,13 +725,7 @@ int xkcp_forward_data(struct xkcp_task *task)
 			debug(LOG_INFO, "conv [%u] received close signal, closing tcp connection", task->conv);
 			free(heapbuf);
 			if (task->bev) {
-				struct evbuffer *out = bufferevent_get_output(task->bev);
-				if (evbuffer_get_length(out) > 0) {
-					bufferevent_disable(task->bev, EV_READ);
-					bufferevent_setcb(task->bev, NULL, xkcp_bev_drain_cb, xkcp_bev_drain_event_cb, NULL);
-				} else {
-					bufferevent_free(task->bev);
-				}
+				xkcp_bev_close_graceful(task->bev);
 				task->bev = NULL;
 			}
 			del_task(task);
@@ -723,6 +738,13 @@ int xkcp_forward_data(struct xkcp_task *task)
 			}
 			free(task);
 			return 0;
+		}
+
+		/* in-band keepalive: activity only, never forwarded to TCP or handshake */
+		if (nrecv == XKCP_NOP_SIGNAL_LEN &&
+			memcmp(obuf, XKCP_NOP_SIGNAL, XKCP_NOP_SIGNAL_LEN) == 0) {
+			free(heapbuf);
+			continue;
 		}
 
 		/* Server side: perform dynamic destination handshake if not done yet */
@@ -770,9 +792,9 @@ int xkcp_forward_data(struct xkcp_task *task)
 					task->bytes_out += pld;
 					if (task->tunnel) task->tunnel->bytes_out += pld;
 				}
-			} else if (hdr_len > 0) {
-				debug(LOG_WARNING, "[%s] conv [%u] legacy unauthenticated dynamic header rejected",
-				      task->tunnel ? task->tunnel->name : "server", task->conv);
+			} else if (hdr_len != 0) {
+				debug(LOG_WARNING, "[%s] conv [%u] invalid or unauthenticated dynamic header (%d) rejected",
+				      task->tunnel ? task->tunnel->name : "server", task->conv, hdr_len);
 				free(heapbuf);
 				return forward_close_session(task);
 			} else {
@@ -811,13 +833,6 @@ int xkcp_forward_data(struct xkcp_task *task)
 			}
 			free(heapbuf);
 			task->last_keepalive = task->last_active = iclock();
-			continue;
-		}
-
-		/* in-band keepalive: activity only, never forwarded to TCP */
-		if (nrecv == XKCP_NOP_SIGNAL_LEN &&
-			memcmp(obuf, XKCP_NOP_SIGNAL, XKCP_NOP_SIGNAL_LEN) == 0) {
-			free(heapbuf);
 			continue;
 		}
 
@@ -984,8 +999,6 @@ int xkcp_main(int argc, char **argv)
 {
 	config_init();
 	parse_commandline(argc, argv);
-
-	xkcp_apply_mode();
 
 	if (xkcp_get_config()->syslog) {
 		debugconf.log_syslog = 1;

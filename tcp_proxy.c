@@ -81,6 +81,28 @@ tcp_proxy_event_cb(struct bufferevent *bev, short what, void *ctx)
 	xkcp_tcp_event_cb(bev, what, ctx);
 }
 
+static uint16_t read_be16(const unsigned char *p)
+{
+	uint16_t net;
+	memcpy(&net, p, sizeof(net));
+	return ntohs(net);
+}
+
+static void socks5_reject_and_close(struct bufferevent *bev, struct xkcp_task *task,
+				    const uint8_t *rep, size_t rep_len)
+{
+	if (rep && rep_len > 0)
+		bufferevent_write(bev, rep, rep_len);
+	del_task(task);
+	if (task->kcp) {
+		ikcp_release(task->kcp);
+		task->kcp = NULL;
+	}
+	task->bev = NULL;
+	free(task);
+	xkcp_bev_close_graceful(bev);
+}
+
 static void
 tcp_proxy_socks5_read_cb(struct bufferevent *bev, void *ctx)
 {
@@ -101,7 +123,7 @@ tcp_proxy_socks5_read_cb(struct bufferevent *bev, void *ctx)
 		uint8_t nmethods = buf[1];
 		if (ver != 5) {
 			debug(LOG_WARNING, "[%s] invalid SOCKS5 version [%u], closing", tunnel->name, ver);
-			bufferevent_free(bev);
+			socks5_reject_and_close(bev, task, NULL, 0);
 			return;
 		}
 		if (len < (size_t)(2 + nmethods))
@@ -129,8 +151,7 @@ tcp_proxy_socks5_read_cb(struct bufferevent *bev, void *ctx)
 		if (ver != 5 || cmd != 1 /* CONNECT */) {
 			debug(LOG_WARNING, "[%s] unsupported SOCKS5 cmd [%u]", tunnel->name, cmd);
 			uint8_t err_rep[10] = {0x05, 0x07, 0x00, 0x01, 0,0,0,0, 0,0};
-			bufferevent_write(bev, err_rep, sizeof(err_rep));
-			bufferevent_free(bev);
+			socks5_reject_and_close(bev, task, err_rep, sizeof(err_rep));
 			return;
 		}
 
@@ -146,7 +167,7 @@ tcp_proxy_socks5_read_cb(struct bufferevent *bev, void *ctx)
 			struct in_addr in;
 			memcpy(&in.s_addr, buf + 4, 4);
 			inet_ntop(AF_INET, &in, thost, sizeof(thost));
-			tport = ntohs(*(uint16_t *)(buf + 8));
+			tport = read_be16(buf + 8);
 		} else if (atyp == 3) { /* Domain name */
 			if (len < 5)
 				return;
@@ -160,7 +181,7 @@ tcp_proxy_socks5_read_cb(struct bufferevent *bev, void *ctx)
 				dlen = sizeof(thost) - 1;
 			memcpy(thost, buf + 5, dlen);
 			thost[dlen] = '\0';
-			tport = ntohs(*(uint16_t *)(buf + 5 + dlen));
+			tport = read_be16(buf + 5 + dlen);
 		} else if (atyp == 4) { /* IPv6 */
 			req_len = 4 + 16 + 2;
 			if (len < req_len)
@@ -169,12 +190,11 @@ tcp_proxy_socks5_read_cb(struct bufferevent *bev, void *ctx)
 			struct in6_addr in6;
 			memcpy(&in6, buf + 4, 16);
 			inet_ntop(AF_INET6, &in6, thost, sizeof(thost));
-			tport = ntohs(*(uint16_t *)(buf + 20));
+			tport = read_be16(buf + 20);
 		} else {
 			debug(LOG_WARNING, "[%s] unsupported SOCKS5 atyp [%u]", tunnel->name, atyp);
 			uint8_t err_rep[10] = {0x05, 0x08, 0x00, 0x01, 0,0,0,0, 0,0};
-			bufferevent_write(bev, err_rep, sizeof(err_rep));
-			bufferevent_free(bev);
+			socks5_reject_and_close(bev, task, err_rep, sizeof(err_rep));
 			return;
 		}
 

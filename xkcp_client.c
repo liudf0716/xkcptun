@@ -121,6 +121,11 @@ static void xkcp_rcv_cb(const int sock, short int which, void *arg)
 		if (nrecv <= 0)
 			break;
 
+		if (tunnel && from_len >= (socklen_t)sizeof(from) &&
+		    (from.sin_addr.s_addr != tunnel->client_proxy_param.sockaddr.sin_addr.s_addr ||
+		     from.sin_port != tunnel->client_proxy_param.sockaddr.sin_port))
+			continue;
+
 		if (tunnel && tunnel->client_fec)
 			fec_conn_decode(tunnel->client_fec, buf, nrecv, fec_deliver_pkt, tunnel);
 		else
@@ -218,6 +223,7 @@ int client_main_loop(void)
 		tunnel->param = *p;
 		tunnel->base = base;
 		tunnel->mgr = &mgr;
+		tunnel->udp_local_fd = -1;
 		iqueue_init(&tunnel->client_task_list);
 
 		/* Resolve remote server address */
@@ -239,8 +245,11 @@ int client_main_loop(void)
 		xkcp_apply_sockbuf_param(xkcp_fd, p);
 		tunnel->xkcp_fd = xkcp_fd;
 
+		int is_udp = (p->proto && strcmp(p->proto, "udp") == 0);
 		if (p->fec) {
 			int cap = p->mtu > 0 ? p->mtu : 1350;
+			if (is_udp && cap < 4096)
+				cap = 4096;
 			tunnel->client_fec = fec_conn_new(p->data_shard, p->parity_shard, cap);
 			if (!tunnel->client_fec)
 				debug(LOG_ERR, "[%s] fec_conn_new failed, running without FEC", tunnel->name);
@@ -256,7 +265,6 @@ int client_main_loop(void)
 		tunnel->client_proxy_param.fec = tunnel->client_fec;
 		tunnel->client_proxy_param.tunnel = tunnel;
 
-		int is_udp = (p->proto && strcmp(p->proto, "udp") == 0);
 		if (is_udp) {
 			if (init_udp_proxy(tunnel) != 0) {
 				close(xkcp_fd);

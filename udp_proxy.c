@@ -47,7 +47,7 @@ static void udp_proxy_read_cb(evutil_socket_t fd, short what, void *arg)
 	if (!tunnel) return;
 
 	char buf[XKCP_RECV_BUF_LEN];
-	char enc_buf[XKCP_RECV_BUF_LEN + 128];
+	char enc_buf[XKCP_RECV_BUF_LEN + 512];
 	struct sockaddr_in client_sa;
 	socklen_t sa_len;
 	int nrecv;
@@ -207,7 +207,7 @@ void udp_proxy_cleanup(struct xkcp_tunnel *tunnel)
 		event_free(tunnel->udp_local_ev);
 		tunnel->udp_local_ev = NULL;
 	}
-	if (tunnel->udp_local_fd > 0) {
+	if (tunnel->udp_local_fd >= 0) {
 		close(tunnel->udp_local_fd);
 		tunnel->udp_local_fd = -1;
 	}

@@ -78,6 +78,31 @@ struct user_spy_cmd server_cmd[] = {
 	{NULL, NULL}
 };
 
+static void evbuffer_add_json_str(struct evbuffer *out, const char *s)
+{
+	evbuffer_add(out, "\"", 1);
+	if (s) {
+		for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+			switch (*p) {
+			case '"':  evbuffer_add(out, "\\\"", 2); break;
+			case '\\': evbuffer_add(out, "\\\\", 2); break;
+			case '\b': evbuffer_add(out, "\\b", 2); break;
+			case '\f': evbuffer_add(out, "\\f", 2); break;
+			case '\n': evbuffer_add(out, "\\n", 2); break;
+			case '\r': evbuffer_add(out, "\\r", 2); break;
+			case '\t': evbuffer_add(out, "\\t", 2); break;
+			default:
+				if (*p < 0x20)
+					evbuffer_add_printf(out, "\\u%04x", *p);
+				else
+					evbuffer_add(out, p, 1);
+				break;
+			}
+		}
+	}
+	evbuffer_add(out, "\"", 1);
+}
+
 static void get_client_list(struct bufferevent *bev, void *ctx, const char *arg)
 {
 	struct xkcp_manager *mgr = ctx;
@@ -207,15 +232,15 @@ static void get_client_json(struct bufferevent *bev, void *ctx, const char *arg)
 		const char *ptype = is_udp ? "forward" : (t->param.proxy_type ? t->param.proxy_type : (t->param.target_addr ? "forward" : "redir"));
 
 		evbuffer_add_printf(output, "    {\n");
-		evbuffer_add_printf(output, "      \"name\": \"%s\",\n", t->name);
+		evbuffer_add_printf(output, "      \"name\": "); evbuffer_add_json_str(output, t->name); evbuffer_add(output, ",\n", 2);
 		evbuffer_add_printf(output, "      \"proto\": \"%s\",\n", is_udp ? "udp" : "tcp");
-		evbuffer_add_printf(output, "      \"proxy_type\": \"%s\",\n", ptype);
+		evbuffer_add_printf(output, "      \"proxy_type\": "); evbuffer_add_json_str(output, ptype); evbuffer_add(output, ",\n", 2);
 		evbuffer_add_printf(output, "      \"local_port\": %d,\n", t->param.local_port);
-		evbuffer_add_printf(output, "      \"remote_addr\": \"%s\",\n", t->param.remote_addr ? t->param.remote_addr : "");
+		evbuffer_add_printf(output, "      \"remote_addr\": "); evbuffer_add_json_str(output, t->param.remote_addr ? t->param.remote_addr : ""); evbuffer_add(output, ",\n", 2);
 		evbuffer_add_printf(output, "      \"remote_port\": %d,\n", t->param.remote_port);
-		evbuffer_add_printf(output, "      \"target_addr\": \"%s\",\n", t->param.target_addr ? t->param.target_addr : "");
+		evbuffer_add_printf(output, "      \"target_addr\": "); evbuffer_add_json_str(output, t->param.target_addr ? t->param.target_addr : ""); evbuffer_add(output, ",\n", 2);
 		evbuffer_add_printf(output, "      \"target_port\": %d,\n", t->param.target_port);
-		evbuffer_add_printf(output, "      \"mode\": \"%s\",\n", t->param.mode ? t->param.mode : "fast3");
+		evbuffer_add_printf(output, "      \"mode\": "); evbuffer_add_json_str(output, t->param.mode ? t->param.mode : "fast3"); evbuffer_add(output, ",\n", 2);
 		evbuffer_add_printf(output, "      \"fec\": %d,\n", t->param.fec);
 		evbuffer_add_printf(output, "      \"total_conns\": %u,\n", t->total_conns);
 		evbuffer_add_printf(output, "      \"active_conns\": %d,\n", conns);
@@ -240,9 +265,9 @@ static void get_client_json(struct bufferevent *bev, void *ctx, const char *arg)
 				evbuffer_add_printf(output, "        {\n");
 				evbuffer_add_printf(output, "          \"id\": %u,\n", s->session_id);
 				evbuffer_add_printf(output, "          \"proto\": \"udp\",\n");
-				evbuffer_add_printf(output, "          \"client_host\": \"%s\",\n", c_ip);
+				evbuffer_add_printf(output, "          \"client_host\": "); evbuffer_add_json_str(output, c_ip); evbuffer_add(output, ",\n", 2);
 				evbuffer_add_printf(output, "          \"client_port\": %u,\n", ntohs(s->client_sa.sin_port));
-				evbuffer_add_printf(output, "          \"target_host\": \"%s\",\n", th);
+				evbuffer_add_printf(output, "          \"target_host\": "); evbuffer_add_json_str(output, th); evbuffer_add(output, ",\n", 2);
 				evbuffer_add_printf(output, "          \"target_port\": %u,\n", tp);
 				evbuffer_add_printf(output, "          \"uptime\": %llu,\n", (unsigned long long)uptime);
 				evbuffer_add_printf(output, "          \"bytes_in\": %llu,\n", (unsigned long long)s->bytes_in);
@@ -265,9 +290,9 @@ static void get_client_json(struct bufferevent *bev, void *ctx, const char *arg)
 				evbuffer_add_printf(output, "        {\n");
 				evbuffer_add_printf(output, "          \"conv\": %u,\n", task->conv);
 				evbuffer_add_printf(output, "          \"proto\": \"tcp\",\n");
-				evbuffer_add_printf(output, "          \"client_host\": \"%s\",\n", chost);
+				evbuffer_add_printf(output, "          \"client_host\": "); evbuffer_add_json_str(output, chost); evbuffer_add(output, ",\n", 2);
 				evbuffer_add_printf(output, "          \"client_port\": %u,\n", task->client_port);
-				evbuffer_add_printf(output, "          \"target_host\": \"%s\",\n", task->target_host);
+				evbuffer_add_printf(output, "          \"target_host\": "); evbuffer_add_json_str(output, task->target_host); evbuffer_add(output, ",\n", 2);
 				evbuffer_add_printf(output, "          \"target_port\": %u,\n", task->target_port);
 				evbuffer_add_printf(output, "          \"uptime\": %llu,\n", (unsigned long long)uptime);
 				evbuffer_add_printf(output, "          \"bytes_in\": %llu,\n", (unsigned long long)task->bytes_in);
@@ -412,11 +437,11 @@ static void get_server_json(struct bufferevent *bev, void *ctx, const char *arg)
 		active_conns += get_queue_size(&t->udp_server_sessions);
 
 		evbuffer_add_printf(output, "    {\n");
-		evbuffer_add_printf(output, "      \"name\": \"%s\",\n", t->name);
+		evbuffer_add_printf(output, "      \"name\": "); evbuffer_add_json_str(output, t->name); evbuffer_add(output, ",\n", 2);
 		evbuffer_add_printf(output, "      \"local_port\": %d,\n", t->param.local_port);
-		evbuffer_add_printf(output, "      \"remote_addr\": \"%s\",\n", t->param.remote_addr ? t->param.remote_addr : "");
+		evbuffer_add_printf(output, "      \"remote_addr\": "); evbuffer_add_json_str(output, t->param.remote_addr ? t->param.remote_addr : ""); evbuffer_add(output, ",\n", 2);
 		evbuffer_add_printf(output, "      \"remote_port\": %d,\n", t->param.remote_port);
-		evbuffer_add_printf(output, "      \"mode\": \"%s\",\n", t->param.mode ? t->param.mode : "fast3");
+		evbuffer_add_printf(output, "      \"mode\": "); evbuffer_add_json_str(output, t->param.mode ? t->param.mode : "fast3"); evbuffer_add(output, ",\n", 2);
 		evbuffer_add_printf(output, "      \"fec\": %d,\n", t->param.fec);
 		evbuffer_add_printf(output, "      \"total_conns\": %u,\n", t->total_conns);
 		evbuffer_add_printf(output, "      \"active_conns\": %d,\n", active_conns);
@@ -445,9 +470,9 @@ static void get_server_json(struct bufferevent *bev, void *ctx, const char *arg)
 						evbuffer_add_printf(output, "        {\n");
 						evbuffer_add_printf(output, "          \"conv\": %u,\n", task->conv);
 						evbuffer_add_printf(output, "          \"proto\": \"tcp\",\n");
-						evbuffer_add_printf(output, "          \"client_host\": \"%s\",\n", chost);
+						evbuffer_add_printf(output, "          \"client_host\": "); evbuffer_add_json_str(output, chost); evbuffer_add(output, ",\n", 2);
 						evbuffer_add_printf(output, "          \"client_port\": %u,\n", task->client_port);
-						evbuffer_add_printf(output, "          \"target_host\": \"%s\",\n", task->target_host);
+						evbuffer_add_printf(output, "          \"target_host\": "); evbuffer_add_json_str(output, task->target_host); evbuffer_add(output, ",\n", 2);
 						evbuffer_add_printf(output, "          \"target_port\": %u,\n", task->target_port);
 						evbuffer_add_printf(output, "          \"uptime\": %llu,\n", (unsigned long long)uptime);
 						evbuffer_add_printf(output, "          \"bytes_in\": %llu,\n", (unsigned long long)task->bytes_in);
@@ -460,6 +485,30 @@ static void get_server_json(struct bufferevent *bev, void *ctx, const char *arg)
 					}
 					entry = entry->next;
 				}
+			}
+		}
+		{
+			struct udp_server_session *us;
+			iqueue_foreach(us, &t->udp_server_sessions, struct udp_server_session, node) {
+				if (s_idx > 0) evbuffer_add_printf(output, ",\n");
+				s_idx++;
+				uint64_t uptime = (now_ts >= us->create_time && us->create_time > 0) ? (now_ts - us->create_time) : 0;
+				char c_ip[32] = {0};
+				inet_ntop(AF_INET, &us->client_sa.sin_addr, c_ip, sizeof(c_ip));
+				evbuffer_add_printf(output, "        {\n");
+				evbuffer_add_printf(output, "          \"id\": %u,\n", us->session_id);
+				evbuffer_add_printf(output, "          \"proto\": \"udp\",\n");
+				evbuffer_add_printf(output, "          \"client_host\": "); evbuffer_add_json_str(output, c_ip); evbuffer_add(output, ",\n", 2);
+				evbuffer_add_printf(output, "          \"client_port\": %u,\n", ntohs(us->client_sa.sin_port));
+				evbuffer_add_printf(output, "          \"target_host\": "); evbuffer_add_json_str(output, us->target_host); evbuffer_add(output, ",\n", 2);
+				evbuffer_add_printf(output, "          \"target_port\": %u,\n", us->target_port);
+				evbuffer_add_printf(output, "          \"uptime\": %llu,\n", (unsigned long long)uptime);
+				evbuffer_add_printf(output, "          \"bytes_in\": %llu,\n", (unsigned long long)us->bytes_in);
+				evbuffer_add_printf(output, "          \"bytes_out\": %llu,\n", (unsigned long long)us->bytes_out);
+				evbuffer_add_printf(output, "          \"rx_rate_bps\": 0,\n");
+				evbuffer_add_printf(output, "          \"tx_rate_bps\": 0,\n");
+				evbuffer_add_printf(output, "          \"rtt_ms\": 0\n");
+				evbuffer_add_printf(output, "        }");
 			}
 		}
 		evbuffer_add_printf(output, "\n      ]\n");
@@ -502,7 +551,8 @@ static void process_user_cmd(struct bufferevent *bev, const char *cmd_line, void
 					is_json ? "application/json" : "text/plain");
 			}
 			table[i].cmd_process(bev, ctx, arg);
-			bufferevent_setcb(bev, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, ctx);
+			bufferevent_disable(bev, EV_READ);
+			bufferevent_setcb(bev, NULL, xkcp_mon_write_cb, xkcp_mon_event_cb, ctx);
 			bufferevent_enable(bev, EV_WRITE);
 			return;
 		}
@@ -515,7 +565,8 @@ static void process_user_cmd(struct bufferevent *bev, const char *cmd_line, void
 				"HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n");
 		}
 		table[0].cmd_process(bev, ctx, arg);
-		bufferevent_setcb(bev, xkcp_mon_read_cb, xkcp_mon_write_cb, xkcp_mon_event_cb, ctx);
+		bufferevent_disable(bev, EV_READ);
+		bufferevent_setcb(bev, NULL, xkcp_mon_write_cb, xkcp_mon_event_cb, ctx);
 		bufferevent_enable(bev, EV_WRITE);
 	}
 }

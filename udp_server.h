@@ -4,17 +4,29 @@
 #include <netinet/in.h>
 #include "xkcp_util.h"
 
+struct evdns_request;
+struct evbuffer;
+
 struct udp_server_session {
 	iqueue_head node;
 	uint32_t session_id;
 	struct sockaddr_in client_sa;
 	struct sockaddr_in target_sa;
+	char target_host[256];
+	uint16_t target_port;
 	int target_fd;
 	struct event *target_ev;
 	struct xkcp_tunnel *tunnel;
 	struct fec_conn *fec;
 	int xkcpfd;
 	IUINT32 last_active;
+	uint64_t create_time;
+	uint64_t bytes_in;
+	uint64_t bytes_out;
+	int dns_resolved;
+	int dns_failed;
+	struct evdns_request *dns_req;
+	struct evbuffer *pending_pkts;
 };
 
 int init_server_udp(struct xkcp_tunnel *tunnel);

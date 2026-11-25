@@ -294,11 +294,14 @@ static void fec_emit_parity(struct fec_conn *c, fec_pkt_cb out, void *user)
 {
 	int i, j, w, width = 0;
 
-	for (i = 0; i < c->k; i++)
+	if (c->tx_cnt <= 0)
+		return;
+
+	for (i = 0; i < c->tx_cnt; i++)
 		if (c->tx_len[i] > width)
 			width = c->tx_len[i];
 
-	if (c->r_eff > 0) {
+	if (c->r_eff > 0 && width > 0) {
 		uint8_t *par = malloc((size_t)c->r_eff * (FEC_HDR_SIZE + width));
 		if (par) {
 			/* zero each parity payload region ([hdr][payload] blocks) */
@@ -306,7 +309,7 @@ static void fec_emit_parity(struct fec_conn *c, fec_pkt_cb out, void *user)
 				memset(par + (size_t)i * (FEC_HDR_SIZE + width) + FEC_HDR_SIZE,
 				       0, width);
 
-			for (j = 0; j < c->k; j++) {
+			for (j = 0; j < c->tx_cnt; j++) {
 				for (i = 0; i < c->r_eff; i++) {
 					uint8_t cf = c->coef[i * c->k + j];
 					uint8_t *dst = par + (size_t)i * (FEC_HDR_SIZE + width) + FEC_HDR_SIZE;
@@ -328,6 +331,7 @@ static void fec_emit_parity(struct fec_conn *c, fec_pkt_cb out, void *user)
 		}
 	}
 
+	memset(c->tx_len, 0, sizeof(c->tx_len));
 	c->tx_cnt = 0;
 }
 

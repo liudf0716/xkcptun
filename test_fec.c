@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "fec.h"
 
@@ -222,5 +223,57 @@ int main(void)
 	}
 
 	printf("fec tests: %ld cases, %d failures\n", cases, fails);
+
+	/* Regression test: partial group tick flush after a larger full group
+	 * must not leak stale shard lengths or payload bytes into parity */
+	{
+		struct fec_conn *enc = fec_conn_new(4, 3, 512);
+		struct fec_conn *dec = fec_conn_new(4, 3, 512);
+		struct caplist g1 = {0}, g2 = {0};
+		struct outlist out = {0};
+		char big[200], small0[32], small1[32];
+
+		memset(big, 'A', sizeof(big));
+		memset(small0, 'B', sizeof(small0));
+		memset(small1, 'C', sizeof(small1));
+
+		for (int i = 0; i < 4; i++)
+			fec_conn_encode(enc, big, sizeof(big), cap_add, &g1);
+
+		fec_conn_encode(enc, small0, sizeof(small0), cap_add, &g2);
+		fec_conn_encode(enc, small1, sizeof(small1), cap_add, &g2);
+		usleep((FEC_PARTIAL_FLUSH_MS + 20) * 1000);
+		fec_conn_tick(enc, cap_add, &g2);
+
+		/* g2 should have 2 data shards + 3 parity shards; parity size must
+		 * reflect small shards (32+2+8 = 42), NOT stale 200-byte group 1 */
+		if (g2.n != 5 || g2.pkts[2].len != FEC_HDR_SIZE + 2 + (int)sizeof(small0)) {
+			fprintf(stderr, "FAIL partial flush parity size: n=%d par_len=%d\n",
+				g2.n, g2.n > 2 ? g2.pkts[2].len : -1);
+			fails++;
+		} else {
+			/* Drop shard 0 of g2 and feed shard 1 + 3 parity shards:
+			 * must recover small0 and NOT resurrect stale 'A' shards */
+			out.expect = 4;
+			out.data = calloc(4, sizeof(char *));
+			out.lens = calloc(4, sizeof(int));
+			for (int i = 1; i < g2.n; i++)
+				fec_conn_decode(dec, g2.pkts[i].data, g2.pkts[i].len, out_collect, &out);
+			if (out.n != 2 ||
+			    out.lens[0] != sizeof(small1) || memcmp(out.data[0], small1, sizeof(small1)) != 0 ||
+			    out.lens[1] != sizeof(small0) || memcmp(out.data[1], small0, sizeof(small0)) != 0) {
+				fprintf(stderr, "FAIL partial flush recovery: out.n=%d\n", out.n);
+				fails++;
+			}
+			for (int i = 0; i < 4; i++) free(out.data[i]);
+			free(out.data);
+			free(out.lens);
+		}
+		cap_free(&g1);
+		cap_free(&g2);
+		fec_conn_free(enc);
+		fec_conn_free(dec);
+	}
+
 	return fails ? 1 : 0;
 }

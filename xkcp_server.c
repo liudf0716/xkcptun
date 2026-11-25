@@ -68,6 +68,8 @@ struct fec_conn *get_peer_fec(struct xkcp_tunnel *tunnel, const char *key)
 		return f;
 
 	cap = tunnel->param.mtu > 0 ? tunnel->param.mtu : 1350;
+	if (cap < 4096)
+		cap = 4096;
 	f = fec_conn_new(tunnel->param.data_shard, tunnel->param.parity_shard, cap);
 	if (!f) {
 		debug(LOG_ERR, "[%s] fec_conn_new failed for [%s], FEC off for this peer",
@@ -81,6 +83,27 @@ struct fec_conn *get_peer_fec(struct xkcp_tunnel *tunnel, const char *key)
 	return f;
 }
 
+static int peer_has_active_fec_refs(struct xkcp_tunnel *tunnel, const char *fkey,
+				    const struct fec_conn *f)
+{
+	if (!tunnel)
+		return 0;
+
+	if (tunnel->server_xkcp_hash && fkey) {
+		iqueue_head *list = NULL;
+		if (get_ptr_by_str(tunnel->server_xkcp_hash, (char *)fkey, (void **)&list) == HASHOK &&
+		    list && !iqueue_is_empty(list))
+			return 1;
+	}
+
+	struct udp_server_session *s;
+	iqueue_foreach(s, &tunnel->udp_server_sessions, struct udp_server_session, node) {
+		if (s->fec == f)
+			return 1;
+	}
+	return 0;
+}
+
 void xkcp_server_drop_peer_fec(struct xkcp_tunnel *tunnel, const char *key)
 {
 	struct fec_conn *f = NULL;
@@ -88,6 +111,8 @@ void xkcp_server_drop_peer_fec(struct xkcp_tunnel *tunnel, const char *key)
 	if (!tunnel || !tunnel->server_fec_hash || !key)
 		return;
 	if (get_ptr_by_str(tunnel->server_fec_hash, (char *)key, (void **)&f) != HASHOK || !f)
+		return;
+	if (peer_has_active_fec_refs(tunnel, key, f))
 		return;
 	del_by_str(tunnel->server_fec_hash, (char *)key);
 	fec_conn_free(f);
@@ -129,7 +154,8 @@ static void sweep_idle_peer_fec(struct xkcp_tunnel *tunnel)
 			jwHashEntry *e = *pp;
 			struct fec_conn *f = e->value.ptrValue;
 
-			if (f && fec_conn_idle_ms(f) > FEC_PEER_IDLE_MS) {
+			if (f && fec_conn_idle_ms(f) > FEC_PEER_IDLE_MS &&
+			    !peer_has_active_fec_refs(tunnel, e->key.strValue, f)) {
 				*pp = e->next;
 				debug(LOG_INFO, "[%s] reclaimed idle FEC codec for [%s]",
 				      tunnel->name, e->key.strValue);
@@ -512,9 +538,9 @@ int server_main_loop(void)
 			evbuffer_free(t->udp_pend);
 		if (t->xkcp_fd >= 0)
 			close(t->xkcp_fd);
-		delete_hash(t->server_fec_hash, (void *)fec_conn_free, HASHSTRING, HASHPTR);
 		delete_hash(t->server_xkcp_hash, (void *)task_list_free, HASHSTRING, HASHPTR);
 		udp_server_cleanup(t);
+		delete_hash(t->server_fec_hash, (void *)fec_conn_free, HASHSTRING, HASHPTR);
 		iqueue_del(&t->node);
 		free(t);
 	}
