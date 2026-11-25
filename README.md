@@ -17,7 +17,7 @@
 [7]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=plastic
 [8]: https://github.com/liudf0716/xkcptun/pulls
 [9]: https://img.shields.io/badge/Issues-welcome-brightgreen.svg?style=plastic
-[10]: https://github.com/liudf0716/xkcptung/issues/new
+[10]: https://github.com/liudf0716/xkcptun/issues/new
 [11]: https://img.shields.io/badge/Platform-%20OpenWRT%20%7CLEDE%20%7CCentOS%20-brightgreen.svg?style=plastic
 [12]: https://github.com/gigibox/openwrt-xkcptun
 [13]: https://img.shields.io/badge/KunTeng-Inside-blue.svg?style=plastic
@@ -41,20 +41,20 @@ sudo apt-get install -y build-essential cmake
 
 `cmake` 默认会检测 `pkg-config` 和 `libevent`；若缺失，会尝试用 `apt` 自动安装 `pkg-config`、`libevent-dev`（需要 root，或当前用户可用 `sudo` 且无需交互输密码）。关闭自动安装：`cmake -DAUTO_INSTALL_DEPS=OFF ..`
 
-也可手动安装依赖：`sudo apt-get install -y pkg-config libevent-dev`
+也可手动安装依赖：
+- **Ubuntu / Debian**：`sudo apt-get install -y pkg-config libevent-dev`
+- **CentOS 7+ / RHEL / Rocky / AlmaLinux**：`sudo yum install -y gcc gcc-c++ make cmake pkgconfig libevent-devel`（注意：CentOS 6 自带的 `libevent` 为 1.4 版本过旧，需源码编译安装 `libevent 2.x` 并配置 `PKG_CONFIG_PATH`）
 
+```shell
 git clone https://github.com/liudf0716/xkcptun.git
-
 cd xkcptun
-
 mkdir build && cd build
-
 cmake ..
-
 make
+sudo make install
+```
 
-
-生成xkcp_client, xkcp_server, xkcp_spy
+生成 `xkcp_client`、`xkcp_server`、`xkcp_spy`（`make install` 默认安装至 `/usr/local/bin/`）。
 
 #### 参考文档
 
@@ -62,74 +62,102 @@ make
 
 2, [bbr vs kcp  优化http下载性能对比报告](https://github.com/liudf0716/xkcptun/wiki/bbr-vs-kcp-%E4%BC%98%E5%8C%96http%E4%B8%8B%E8%BD%BD%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94%E6%8A%A5%E5%91%8A)
 
-3, [如何在centos上部署xkcptun server](https://github.com/liudf0716/xkcptun/pull/11)
-
-4, [AW 上大文件下载 EOF：xkcptun UDP 接收缓冲区排查与代码修复建议](AW-UDP-RX-BUFFER-EOF.md)
+3, [AW 上大文件下载 EOF：xkcptun UDP 接收缓冲区排查与代码修复建议](AW-UDP-RX-BUFFER-EOF.md)
 
 ### OpenWrt
 编译及安装请参考 [openwrt-xkcptun](https://github.com/gigibox/openwrt-xkcptun)
 
-### QuickStart
+### QuickStart（TOML 配置与服务端部署）
 
-为方便理解和使用，我们将使用场景放在同一台pc上，pc使用ubuntu系统，我们通过xkcptun来访问本机的http server
+现代版本 `xkcptun` 采用 **TOML** 配置文件（参考仓库根目录的 `server.toml` 与 `client.toml`）。
 
-假设pc的 eth0 ip 为 192.168.199.18， http server的监听端口为80端口，xkcptun的server和client配置分别如下：
+1. **服务端配置（`/etc/xkcptun/server.toml`）**
 
-server.json 如下：
-```
-{
-  "localinterface": "eth0",
-  "localport": 9089,
-  "remoteaddr": "192.168.199.18",
-  "remoteport": 80,
-  "key": "14789632a",
-  "crypt": "none",
-  "mode": "fast3",
-  "mtu": 1350,
-  "sndwnd": 1024,
-  "rcvwnd": 1024,
-  "datashard": 10,
-  "parityshard": 3,
-  "dscp": 0,
-  "nocomp": true,
-  "acknodelay": false,
-  "nodelay": 0,
-  "interval": 20,
-  "resend": 2,
-  "nc": 1,
-  "sockbuf": 4194304,
-  "keepalive": 10
-}
+假设服务端开放 UDP 端口 `9089`（请确保云服务器安全组与本地防火墙放行 UDP `9089`）：
+
+```toml
+[global]
+syslog = true
+mon_port = 9087
+local_address = "0.0.0.0" # 也可填写具体网卡名如 "eth0" 或指定 IP
+local_port = 9089
+key = "your-secret-key"
+mode = "fast3"
+mtu = 1350
+sndwnd = 1024
+rcvwnd = 1024
+datashard = 10
+parityshard = 3
+sockbuf = 4194304
+keepalive = 10
+# 可选：若需固定默认转发目标（非 dynamic_target 场景），可同时指定 remote_addr / remote_port
+# remote_addr = "127.0.0.1"
+# remote_port = 80
 ```
 
-client.json如下：
-```
-{
-  "localinterface": "eth0",
-  "localport": 9088,
-  "remoteaddr": "192.168.199.18",
-  "remoteport": 9089,
-  "key": "14789632a",
-  "crypt": "none",
-  "mode": "fast3",
-  "mtu": 1350,
-  "sndwnd": 1024,
-  "rcvwnd": 1024,
-  "datashard": 10,
-  "parityshard": 3,
-  "dscp": 0,
-  "nocomp": true,
-  "acknodelay": false,
-  "nodelay": 0,
-  "interval": 20,
-  "resend": 2,
-  "nc": 1,
-  "sockbuf": 4194304,
-  "keepalive": 10
-}
+2. **客户端配置（`client.toml`）**
+
+支持多隧道并行，可通过 `proxy_type` 指定转发类型（`forward` 固定端口转发、`socks5` 内置 SOCKS5 代理、`redir` 透明代理），或通过 `proto = "udp"` 启用直通 UDP 转发：
+
+```toml
+[global]
+syslog = false
+mon_port = 9086
+key = "your-secret-key"
+remote_addr = "your-server-ip"
+remote_port = 9089
+mode = "fast3"
+mtu = 1350
+sndwnd = 1024
+rcvwnd = 1024
+datashard = 10
+parityshard = 3
+sockbuf = 4194304
+keepalive = 10
+
+# 示例 1：固定目标 TCP 端口转发（本地 9088 -> 服务端 127.0.0.1:80）
+[[tunnel]]
+name = "web_forward"
+local_address = "127.0.0.1" # 填 "any" 或 "0.0.0.0" 监听全网卡；macOS/Windows Cygwin 可直接填 IP
+local_port = 9088
+target_addr = "127.0.0.1"
+target_port = 80
+
+# 示例 2：内置 SOCKS5 代理隧道
+[[tunnel]]
+name = "socks5_proxy"
+proxy_type = "socks5"
+local_address = "127.0.0.1"
+local_port = 1080
+
+# 示例 3：UDP 转发（如 DNS）
+[[tunnel]]
+name = "dns_udp"
+proto = "udp"
+local_address = "127.0.0.1"
+local_port = 5353
+target_addr = "8.8.8.8"
+target_port = 53
 ```
 
-注意：`mode` 字段（fast3/fast2/fast/normal）会覆盖 `nodelay`、`interval`、`resend`、`nc` 四个字段的值（与 kcptun 行为一致）。如需精细调优，请直接设置这四个字段并删除 `mode`。
+注意：`mode` 字段（`fast3`/`fast2`/`fast`/`normal`）会覆盖 `nodelay`、`interval`、`resend`、`nc` 四个字段的值（与 kcptun 行为一致）。如需精细调优，请设置 `mode = "manual"` 或省略 `mode`。
+
+3. **启动与 systemd 守护部署**
+
+前台调试运行：
+```shell
+xkcp_server -c server.toml -f -d 7
+xkcp_client -c client.toml -f -d 7
+```
+
+正式后台运行可去掉 `-f` 并将 `-d` 设为 `0`~`2`，或使用仓库提供的 [xkcptun.service](xkcptun.service) 注册 systemd 服务：
+```shell
+sudo mkdir -p /etc/xkcptun
+sudo cp server.toml /etc/xkcptun/server.toml
+sudo cp xkcptun.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now xkcptun
+```
 
 ## FEC 前向纠错（实验性）
 
@@ -144,27 +172,18 @@ client.json如下：
 - 启用 FEC 时 KCP 的 MTU 会自动下调 8 字节以容纳帧头，无需手工调整 `mtu`。
 - **两端必须同时启用或同时关闭**，且 `datashard`/`parityshard` 取值一致，否则无法互通。取值范围：`datashard` 1~64，`parityshard` 0~64。链路较差时可增大 `parityshard`（带宽开销约为 `parityshard/(datashard+parityshard)`）；好链路建议直接关闭以省流量。
 
-分别运行：
+### 测试与状态监控
 
-xkcp_server -c server.json -f -d 7
+验证本地转发效果：
+```shell
+curl http://127.0.0.1:9088
+```
 
-xkcp_client -c client.json -f -d 7
-
-
-[注] 以上命令都是运行在debug和前台运行模式，正式部署的时候要把 -f 去掉， -d 0 如： xkcp_server -c server.json -d 0
-
-curl http://192.168.199.18:9088
-
-其执行效果与curl http://192.168.199.18 等同
-
-
-xkcp_spy -h 192.168.199.18 -s -t status
-
-查看服务器端的情况
-
-xkcp_spy -h 192.168.199.18 -c -t status
-
-查看客户端的情况
+查看服务端/客户端运行状态：
+```shell
+xkcp_spy -h 127.0.0.1 -s -t status
+xkcp_spy -h 127.0.0.1 -c -t status
+```
 
 ### Todo
 

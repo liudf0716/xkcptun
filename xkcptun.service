@@ -4,7 +4,7 @@ After=syslog.target network.target
 
 [Service]
 Type=forking
-ExecStart=/usr/local/bin/xkcp_server -c /etc/xkcptun/server.json -d 2
+ExecStart=/usr/local/bin/xkcp_server -c /etc/xkcptun/server.toml -d 2
 ExecReload=/bin/kill -USR2 $MAINPID
 PrivateTmp=true
 
