@@ -191,7 +191,7 @@ static inline int xkcp_proto_decode_header_ex(const char *buf, size_t buflen,
 		if (buflen < offset + 1)
 			return -1;
 		uint8_t dlen = (uint8_t)buf[offset++];
-		if (buflen < offset + dlen + 2)
+		if (dlen == 0 || buflen < offset + dlen + 2)
 			return -1; /* Incomplete */
 
 		if (host_out && host_out_len > 0) {

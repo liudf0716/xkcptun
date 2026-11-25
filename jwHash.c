@@ -58,12 +58,13 @@ static inline long int hashString(char * str)
 // helper for copying string keys and values
 static inline char * copystring(char * value)
 {
-	char * copy = (char *)malloc(strlen(value)+1);
+	size_t len = strlen(value);
+	char * copy = (char *)malloc(len + 1);
 	if(!copy) {
 		printf("Unable to allocate string value %s\n",value);
 		abort();
 	}
-	strcpy(copy,value);
+	memcpy(copy, value, len + 1);
 	return copy;
 }
 

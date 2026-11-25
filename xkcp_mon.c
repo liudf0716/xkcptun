@@ -530,11 +530,11 @@ static void process_user_cmd(struct bufferevent *bev, const char *cmd_line, void
 		char path[128] = {0};
 		sscanf(cmd_line + 4, "%127s", path);
 		if (strstr(path, "json") || strstr(path, "stats")) {
-			strcpy(cmd, "json");
+			snprintf(cmd, sizeof(cmd), "%s", "json");
 		} else if (strstr(path, "status")) {
-			strcpy(cmd, "status");
+			snprintf(cmd, sizeof(cmd), "%s", "status");
 		} else {
-			strcpy(cmd, "list");
+			snprintf(cmd, sizeof(cmd), "%s", "list");
 		}
 	} else {
 		sscanf(cmd_line, "%63s %127s", cmd, arg);

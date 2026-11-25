@@ -107,7 +107,7 @@ char *get_iface_ip(const char *ifname)
 
 	/* Get IP of internal interface */
 	memset(&if_data, 0, sizeof(if_data));
-	strncpy(if_data.ifr_name, ifname, sizeof(if_data.ifr_name) - 1);
+	snprintf(if_data.ifr_name, sizeof(if_data.ifr_name), "%s", ifname);
 
 	/* Get the IP address */
 	if (ioctl(sockd, SIOCGIFADDR, &if_data) < 0) {
@@ -456,56 +456,50 @@ void xkcp_human_bytes(uint64_t bytes, char *out, size_t outlen)
 	}
 }
 
+static void calc_rate_ewma(uint64_t bytes_in, uint64_t bytes_out,
+			   uint64_t *last_bytes_in, uint64_t *last_bytes_out,
+			   uint64_t *last_calc_time,
+			   uint32_t *rx_rate_bps, uint32_t *tx_rate_bps)
+{
+	uint64_t now_ms = iclock64();
+	if (*last_calc_time == 0) {
+		*last_calc_time = now_ms;
+		*last_bytes_in = bytes_in;
+		*last_bytes_out = bytes_out;
+		*rx_rate_bps = 0;
+		*tx_rate_bps = 0;
+		return;
+	}
+	uint64_t diff_ms = (now_ms > *last_calc_time) ? (now_ms - *last_calc_time) : 0;
+	if (diff_ms >= 500) {
+		uint64_t in_delta = (bytes_in >= *last_bytes_in) ? (bytes_in - *last_bytes_in) : 0;
+		uint64_t out_delta = (bytes_out >= *last_bytes_out) ? (bytes_out - *last_bytes_out) : 0;
+		uint32_t inst_rx = (uint32_t)((in_delta * 1000) / diff_ms);
+		uint32_t inst_tx = (uint32_t)((out_delta * 1000) / diff_ms);
+		*rx_rate_bps = (*rx_rate_bps == 0) ? inst_rx : (*rx_rate_bps * 3 + inst_rx) / 4;
+		*tx_rate_bps = (*tx_rate_bps == 0) ? inst_tx : (*tx_rate_bps * 3 + inst_tx) / 4;
+		*last_bytes_in = bytes_in;
+		*last_bytes_out = bytes_out;
+		*last_calc_time = now_ms;
+	}
+}
+
 void xkcp_calc_tunnel_rates(struct xkcp_tunnel *t)
 {
 	if (!t) return;
-	uint64_t now_ms = iclock64();
-	if (t->last_calc_time == 0) {
-		t->last_calc_time = now_ms;
-		t->last_bytes_in = t->bytes_in;
-		t->last_bytes_out = t->bytes_out;
-		t->rx_rate_bps = 0;
-		t->tx_rate_bps = 0;
-		return;
-	}
-	uint64_t diff_ms = (now_ms > t->last_calc_time) ? (now_ms - t->last_calc_time) : 0;
-	if (diff_ms >= 500) {
-		uint64_t in_delta = (t->bytes_in >= t->last_bytes_in) ? (t->bytes_in - t->last_bytes_in) : 0;
-		uint64_t out_delta = (t->bytes_out >= t->last_bytes_out) ? (t->bytes_out - t->last_bytes_out) : 0;
-		uint32_t inst_rx = (uint32_t)((in_delta * 1000) / diff_ms);
-		uint32_t inst_tx = (uint32_t)((out_delta * 1000) / diff_ms);
-		t->rx_rate_bps = (t->rx_rate_bps == 0) ? inst_rx : (t->rx_rate_bps * 3 + inst_rx) / 4;
-		t->tx_rate_bps = (t->tx_rate_bps == 0) ? inst_tx : (t->tx_rate_bps * 3 + inst_tx) / 4;
-		t->last_bytes_in = t->bytes_in;
-		t->last_bytes_out = t->bytes_out;
-		t->last_calc_time = now_ms;
-	}
+	calc_rate_ewma(t->bytes_in, t->bytes_out,
+		       &t->last_bytes_in, &t->last_bytes_out,
+		       &t->last_calc_time,
+		       &t->rx_rate_bps, &t->tx_rate_bps);
 }
 
 void xkcp_calc_task_rates(struct xkcp_task *task)
 {
 	if (!task) return;
-	uint64_t now_ms = iclock64();
-	if (task->last_calc_time == 0) {
-		task->last_calc_time = now_ms;
-		task->last_bytes_in = task->bytes_in;
-		task->last_bytes_out = task->bytes_out;
-		task->rx_rate_bps = 0;
-		task->tx_rate_bps = 0;
-		return;
-	}
-	uint64_t diff_ms = (now_ms > task->last_calc_time) ? (now_ms - task->last_calc_time) : 0;
-	if (diff_ms >= 500) {
-		uint64_t in_delta = (task->bytes_in >= task->last_bytes_in) ? (task->bytes_in - task->last_bytes_in) : 0;
-		uint64_t out_delta = (task->bytes_out >= task->last_bytes_out) ? (task->bytes_out - task->last_bytes_out) : 0;
-		uint32_t inst_rx = (uint32_t)((in_delta * 1000) / diff_ms);
-		uint32_t inst_tx = (uint32_t)((out_delta * 1000) / diff_ms);
-		task->rx_rate_bps = (task->rx_rate_bps == 0) ? inst_rx : (task->rx_rate_bps * 3 + inst_rx) / 4;
-		task->tx_rate_bps = (task->tx_rate_bps == 0) ? inst_tx : (task->tx_rate_bps * 3 + inst_tx) / 4;
-		task->last_bytes_in = task->bytes_in;
-		task->last_bytes_out = task->bytes_out;
-		task->last_calc_time = now_ms;
-	}
+	calc_rate_ewma(task->bytes_in, task->bytes_out,
+		       &task->last_bytes_in, &task->last_bytes_out,
+		       &task->last_calc_time,
+		       &task->rx_rate_bps, &task->tx_rate_bps);
 }
 
 /* teardown a session when data is in flight but the peer has gone completely
@@ -955,6 +949,7 @@ static void sigterm_cb(evutil_socket_t sig, short events, void *user_data)
 
 void xkcp_setup_signals(struct event_base *base)
 {
+	signal(SIGPIPE, SIG_IGN);
 	g_sigterm_ev = evsignal_new(base, SIGTERM, sigterm_cb, base);
 	g_sigint_ev = evsignal_new(base, SIGINT, sigterm_cb, base);
 	if (g_sigterm_ev)

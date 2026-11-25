@@ -85,7 +85,7 @@ static inline int xkcp_udp_encode_req(char *buf, size_t buflen,
 	hdr->magic[1] = XKCP_UDP_MAGIC_1;
 	hdr->ver = XKCP_UDP_VER;
 	hdr->cmd = XKCP_UDP_CMD_REQ;
-	hdr->session_id = session_id;
+	hdr->session_id = htonl(session_id);
 	hdr->atype = atype;
 
 	size_t offset = sizeof(struct xkcp_udp_req_hdr);
@@ -149,8 +149,9 @@ static inline int xkcp_udp_decode_req(const char *buf, size_t buflen,
 	    hdr->ver != XKCP_UDP_VER || hdr->cmd != XKCP_UDP_CMD_REQ)
 		return -1;
 
+	uint32_t session_id = ntohl(hdr->session_id);
 	if (session_id_out)
-		*session_id_out = hdr->session_id;
+		*session_id_out = session_id;
 
 	size_t offset = sizeof(struct xkcp_udp_req_hdr);
 	char host[XKCP_AUTH_ADDR_MAX] = {0};
@@ -166,7 +167,7 @@ static inline int xkcp_udp_decode_req(const char *buf, size_t buflen,
 	} else if (hdr->atype == XKCP_ATYPE_DOMAIN) {
 		if (buflen < offset + 1) return -1;
 		uint8_t dlen = (uint8_t)buf[offset++];
-		if (buflen < offset + dlen || dlen >= sizeof(host)) return -1;
+		if (dlen == 0 || buflen < offset + dlen || dlen >= sizeof(host)) return -1;
 		memcpy(host, buf + offset, dlen);
 		host[dlen] = '\0';
 		offset += dlen;
@@ -194,8 +195,7 @@ static inline int xkcp_udp_decode_req(const char *buf, size_t buflen,
 		offset += XKCP_AUTH_TOKEN_LEN;
 
 		uint32_t now_sec = (uint32_t)time(NULL);
-		uint32_t sid = session_id_out ? *session_id_out : hdr->session_id;
-		if (xkcp_auth_verify(key, sid, host, port, ts_ptr, token, now_sec) != 0)
+		if (xkcp_auth_verify(key, session_id, host, port, ts_ptr, token, now_sec) != 0)
 			return -1; /* Auth failure */
 	}
 
@@ -231,7 +231,7 @@ static inline int xkcp_udp_encode_resp(char *buf, size_t buflen,
 	hdr->magic[1] = XKCP_UDP_MAGIC_1;
 	hdr->ver = XKCP_UDP_VER;
 	hdr->cmd = XKCP_UDP_CMD_RESP;
-	hdr->session_id = session_id;
+	hdr->session_id = htonl(session_id);
 
 	if (payload && payload_len > 0)
 		memcpy(buf + sizeof(struct xkcp_udp_resp_hdr), payload, payload_len);
@@ -254,8 +254,9 @@ static inline int xkcp_udp_decode_resp(const char *buf, size_t buflen,
 	    hdr->ver != XKCP_UDP_VER || hdr->cmd != XKCP_UDP_CMD_RESP)
 		return -1;
 
+	uint32_t session_id = ntohl(hdr->session_id);
 	if (session_id_out)
-		*session_id_out = hdr->session_id;
+		*session_id_out = session_id;
 
 	if (payload_out)
 		*payload_out = buf + sizeof(struct xkcp_udp_resp_hdr);

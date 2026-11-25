@@ -42,8 +42,23 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 static uint32_t next_conv_id = 0;
+
+static uint32_t seed_conv_prng(void)
+{
+	uint32_t seed = 0;
+	int fd = open("/dev/urandom", O_RDONLY);
+	if (fd >= 0) {
+		ssize_t n = read(fd, &seed, sizeof(seed));
+		close(fd);
+		if (n == (ssize_t)sizeof(seed) && seed != 0)
+			return seed;
+	}
+	seed = (uint32_t)time(NULL) ^ (uint32_t)getpid();
+	return seed ? seed : 1;
+}
 
 static uint32_t gen_conv_id(void *tunnel)
 {
@@ -51,7 +66,7 @@ static uint32_t gen_conv_id(void *tunnel)
 
 	do {
 		if (next_conv_id == 0)
-			next_conv_id = (uint32_t)time(NULL) ^ (uint32_t)getpid();
+			next_conv_id = seed_conv_prng();
 		next_conv_id = next_conv_id * 1103515245 + 12345;
 		conv = next_conv_id;
 	} while (conv == 0 || xkcp_find_task((IUINT32)conv, NULL, tunnel) != NULL);
