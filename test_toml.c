@@ -269,6 +269,41 @@ int main(void)
 	remove(egress_toml);
 	printf("test_egress_proxy_config PASSED!\n");
 
+	/* 6. Test local_addr / local_address / local_interface aliases */
+	const char *addr_toml = "/tmp/test_xkcp_local_addr.toml";
+	fp = fopen(addr_toml, "w");
+	assert(fp != NULL);
+	fprintf(fp,
+		"[global]\n"
+		"remote_addr = \"127.0.0.1\"\n"
+		"remote_port = 9089\n"
+		"[[tunnel]]\n"
+		"name = \"t_addr\"\n"
+		"local_addr = \"127.0.0.1\"\n"
+		"local_port = 2223\n"
+		"[[tunnel]]\n"
+		"name = \"t_address\"\n"
+		"local_address = \"127.0.0.2\"\n"
+		"local_port = 2224\n"
+		"[[tunnel]]\n"
+		"name = \"t_iface\"\n"
+		"local_interface = \"lo\"\n"
+		"local_port = 2225\n"
+	);
+	fclose(fp);
+
+	config_init();
+	rc = xkcp_parse_param(addr_toml);
+	assert(rc == 0);
+	cfg = xkcp_get_config();
+	assert(cfg->num_tunnels == 3);
+	assert(strcmp(cfg->tunnels[0].local_interface, "127.0.0.1") == 0);
+	assert(strcmp(cfg->tunnels[1].local_interface, "127.0.0.2") == 0);
+	assert(strcmp(cfg->tunnels[2].local_interface, "lo") == 0);
+	xkcp_free_config();
+	remove(addr_toml);
+	printf("test_local_address_aliases PASSED!\n");
+
 	printf("All TOML parser & Dynamic Destination unit tests PASSED successfully!\n");
 	return 0;
 }

@@ -78,7 +78,7 @@ usage(const char *appname)
 	fprintf(stdout, "  -d <level>        Debug level\n");
 	fprintf(stdout, "  --syslog          Log to syslog\n\n");
 
-	fprintf(stdout, "  -i <interface>    Interface to use (default: any/0.0.0.0)\n");
+	fprintf(stdout, "  -i <iface|ip>     Interface name or local IP address to bind (default: any/0.0.0.0)\n");
 	fprintf(stdout, "  -l <port>         Port number of your local server (default: 9089 server / 0 client)\n");
 	fprintf(stdout, "  -s <host>         Host name or IP address of your remote server\n");
 	fprintf(stdout, "  -p <port>         Port number of your remote server (default: 9089)\n");

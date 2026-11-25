@@ -22,6 +22,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -81,15 +82,22 @@ IUINT32 iclock(void)
 
 char *get_iface_ip(const char *ifname)
 {
-	struct ifreq if_data;
 	struct in_addr in;
+
+	if (!ifname || strlen(ifname) == 0 || strcasecmp(ifname, "any") == 0) {
+		return strdup("0.0.0.0");
+	}
+
+	/* Accept direct IPv4 bind addresses (works on Linux, Cygwin, BSD, etc.) */
+	if (inet_pton(AF_INET, ifname, &in) == 1) {
+		return strdup(ifname);
+	}
+
+#ifdef SIOCGIFADDR
+	struct ifreq if_data;
 	char *ip_str;
 	int sockd;
 	u_int32_t ip;
-
-	if (!ifname || strlen(ifname) == 0) {
-		return strdup("0.0.0.0");
-	}
 
 	/* Create a socket */
 	if ((sockd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -103,7 +111,7 @@ char *get_iface_ip(const char *ifname)
 
 	/* Get the IP address */
 	if (ioctl(sockd, SIOCGIFADDR, &if_data) < 0) {
-		debug(LOG_DEBUG, "ioctl(): SIOCGIFADDR for [%s] failed (%s), fallback to 0.0.0.0",
+		debug(LOG_WARNING, "ioctl(): SIOCGIFADDR for [%s] failed (%s), fallback to 0.0.0.0",
 		      ifname, strerror(errno));
 		close(sockd);
 		return strdup("0.0.0.0");
@@ -117,6 +125,9 @@ char *get_iface_ip(const char *ifname)
 		return ip_str;
 
 	if (ip_str) free(ip_str);
+#else
+	debug(LOG_WARNING, "SIOCGIFADDR not supported for [%s], fallback to 0.0.0.0", ifname);
+#endif
 	return strdup("0.0.0.0");
 }
 

@@ -25,7 +25,7 @@
 
 struct xkcp_param {
 	char 	*name;			    // tunnel identifier name / alias
-	char	*local_interface;   // local interface to bind
+	char	*local_interface;   // local interface name or IP address to bind
 	int		local_port; 	    // local listen port
 	char	*remote_addr;	    // remote server host (client) or backend host (server)
 	int		remote_port;	    // remote server port (client) or backend port (server)

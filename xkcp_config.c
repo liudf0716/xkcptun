@@ -201,6 +201,8 @@ static void parse_tunnel_table(toml_table_t *tab, struct xkcp_param *param)
 	if (!tab || !param) return;
 
 	parse_string_opt(tab, "name", NULL, &param->name);
+	parse_string_opt(tab, "local_addr", "localaddr", &param->local_interface);
+	parse_string_opt(tab, "local_address", "localaddress", &param->local_interface);
 	parse_string_opt(tab, "local_interface", "localinterface", &param->local_interface);
 	parse_int_opt(tab, "local_port", "localport", &param->local_port);
 	parse_string_opt(tab, "remote_addr", "remoteaddr", &param->remote_addr);
