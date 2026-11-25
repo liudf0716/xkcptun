@@ -195,15 +195,6 @@ xkcp_spy -h 127.0.0.1 -c -t status
 
 ---
 
-## 参考文档
-
-1. [Benchmark 性能对比测试报告](BENCHMARK.md)
-2. [AW 上大文件下载 EOF：xkcptun UDP 接收缓冲区排查与修复说明](AW-UDP-RX-BUFFER-EOF.md)
-3. [安装 libjson-c 的问题](https://github.com/liudf0716/xkcptun/wiki/%E5%AE%89%E8%A3%85libjson-c%E7%9A%84%E9%97%AE%E9%A2%98)
-4. [BBR vs KCP 优化 HTTP 下载性能对比报告](https://github.com/liudf0716/xkcptun/wiki/bbr-vs-kcp-%E4%BC%98%E5%8C%96http%E4%B8%8B%E8%BD%BD%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94%E6%8A%A5%E5%91%8A)
-
----
-
 ## 参与贡献 & 交流
 
 * 欢迎提交 [Issues](https://github.com/liudf0716/xkcptun/issues/new) 或 Pull Request，详情请参考 [CONTRIBUTING.md](CONTRIBUTING.md) / [CONTRIBUTING_CN.md](CONTRIBUTING_CN.md)。
