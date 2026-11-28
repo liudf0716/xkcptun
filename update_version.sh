@@ -25,7 +25,7 @@ elif [ -d "${SCRIPT_DIR}/.git" ] && command -v git >/dev/null 2>&1; then
     COMMIT_COUNT=$(git -C "$SCRIPT_DIR" rev-list --count HEAD 2>/dev/null || echo "0")
     GIT_HASH=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
     DIRTY=""
-    if [ -n "$(git -C "$SCRIPT_DIR" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+    if [ -n "$(git -C "$SCRIPT_DIR" status --porcelain --untracked-files=no -- ':(exclude)version.h' 2>/dev/null)" ]; then
         DIRTY="-dirty"
     fi
 
