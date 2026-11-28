@@ -23,6 +23,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
+
+/* Wire protocol compatibility version (bump when TCP/UDP framing changes) */
+#define XKCP_PROTO_VERSION 2
 #include <string.h>
 #include <arpa/inet.h>
 

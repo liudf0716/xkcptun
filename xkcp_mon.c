@@ -39,6 +39,7 @@
 #include "udp_proxy.h"
 #include "udp_server.h"
 #include "version.h"
+#include "xkcp_proto.h"
 #include "debug.h"
 #include "jwHash.h"
 
@@ -212,6 +213,7 @@ static void get_client_json(struct bufferevent *bev, void *ctx, const char *arg)
 	evbuffer_add_printf(output, "{\n");
 	evbuffer_add_printf(output, "  \"role\": \"client\",\n");
 	evbuffer_add_printf(output, "  \"version\": \"%s\",\n", VERSION);
+	evbuffer_add_printf(output, "  \"proto_version\": %d,\n", XKCP_PROTO_VERSION);
 	evbuffer_add_printf(output, "  \"num_tunnels\": %d,\n", mgr->num_tunnels);
 	evbuffer_add_printf(output, "  \"total_conns\": %u,\n", total_conns_all);
 	evbuffer_add_printf(output, "  \"active_conns\": %u,\n", active_conns_all);
@@ -410,6 +412,7 @@ static void get_server_json(struct bufferevent *bev, void *ctx, const char *arg)
 	evbuffer_add_printf(output, "{\n");
 	evbuffer_add_printf(output, "  \"role\": \"server\",\n");
 	evbuffer_add_printf(output, "  \"version\": \"%s\",\n", VERSION);
+	evbuffer_add_printf(output, "  \"proto_version\": %d,\n", XKCP_PROTO_VERSION);
 	evbuffer_add_printf(output, "  \"num_tunnels\": %d,\n", mgr->num_tunnels);
 	evbuffer_add_printf(output, "  \"total_conns\": %u,\n", total_conns_all);
 	evbuffer_add_printf(output, "  \"active_conns\": %u,\n", active_conns_all);

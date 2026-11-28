@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(xkcptun C)
 
-# Automatically update version.h from git if available
+# Automatically update version.h from git if available (both at configure time and every build)
 find_program(GIT_EXECUTABLE git)
 if(GIT_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
 	execute_process(
@@ -10,6 +10,11 @@ if(GIT_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 		OUTPUT_QUIET
 		ERROR_QUIET
+	)
+	add_custom_target(update_version ALL
+		COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/update_version.sh
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+		COMMENT "Checking version.h against git HEAD"
 	)
 endif()
 
@@ -142,6 +147,11 @@ target_link_libraries(xkcp_client ${link_flag} ${libs})
 
 add_executable(xkcp_server ${src_xkcp_server})
 target_link_libraries(xkcp_server ${link_flag} ${libs})
+
+if(TARGET update_version)
+	add_dependencies(xkcp_client update_version)
+	add_dependencies(xkcp_server update_version)
+endif()
 
 install(TARGETS xkcp_client xkcp_server xkcp_spy
         RUNTIME DESTINATION bin
